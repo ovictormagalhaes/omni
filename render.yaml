@@ -1,0 +1,56 @@
+services:
+  # ── API (Web Service) ─────────────────────────────────────────────
+  - type: web
+    name: omni-api
+    runtime: docker
+    region: oregon
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: omni-api
+    envVars:
+      - key: RUST_LOG
+        value: info,omni_backend=debug
+      - key: PORT
+        value: "8080"
+      - key: MONGODB_URL
+        sync: false
+      - key: MONGODB_DATABASE
+        value: omni
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_CACHE_TTL
+        value: "300"
+      - key: BACKFILL_DAYS
+        value: "30"
+      - key: THE_GRAPH_API_KEY
+        sync: false
+      - key: TRONGRID_API_KEY
+        sync: false
+    healthCheckPath: /health
+
+  # ── Worker (Cron Job — 1x per day at 03:00 UTC) ──────────────────
+  - type: cron
+    name: omni-worker
+    runtime: docker
+    region: oregon
+    plan: starter
+    schedule: "0 3 * * *"
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: omni-worker collect
+    envVars:
+      - key: RUST_LOG
+        value: info,omni_backend=debug
+      - key: MONGODB_URL
+        sync: false
+      - key: MONGODB_DATABASE
+        value: omni
+      - key: REDIS_URL
+        sync: false
+      - key: BACKFILL_DAYS
+        value: "30"
+      - key: THE_GRAPH_API_KEY
+        sync: false
+      - key: TRONGRID_API_KEY
+        sync: false

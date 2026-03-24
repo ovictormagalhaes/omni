@@ -1,0 +1,38 @@
+// Official logo URLs for protocols and chains - Using Google Favicon Service (CORS-friendly)
+export const PROTOCOL_LOGOS: Record<string, string> = {
+  aave: 'https://www.google.com/s2/favicons?domain=app.aave.com&sz=128',
+  euler: 'https://www.google.com/s2/favicons?domain=euler.finance&sz=128',
+  morpho: 'https://www.google.com/s2/favicons?domain=morpho.org&sz=128',
+  kamino: 'https://www.google.com/s2/favicons?domain=kamino.finance&sz=128',
+  fluid: 'https://www.google.com/s2/favicons?domain=fluid.instadapp.io&sz=128',
+  sparklend: 'https://www.google.com/s2/favicons?domain=spark.fi&sz=128',
+  justlend: 'https://www.google.com/s2/favicons?domain=justlend.link&sz=128',
+  jupiter: 'https://www.google.com/s2/favicons?domain=jup.ag&sz=128',
+  lido: 'https://www.google.com/s2/favicons?domain=lido.fi&sz=128',
+  marinade: 'https://www.google.com/s2/favicons?domain=marinade.finance&sz=128',
+  jito: 'https://www.google.com/s2/favicons?domain=jito.network&sz=128',
+  rocketpool: 'https://www.google.com/s2/favicons?domain=rocketpool.net&sz=128',
+};
+
+export const CHAIN_LOGOS: Record<string, string> = {
+  ethereum: 'https://icons.llamao.fi/icons/chains/rsz_ethereum.jpg',
+  solana: 'https://icons.llamao.fi/icons/chains/rsz_solana.jpg',
+  polygon: 'https://icons.llamao.fi/icons/chains/rsz_polygon.jpg',
+  arbitrum: 'https://icons.llamao.fi/icons/chains/rsz_arbitrum.jpg',
+  optimism: 'https://icons.llamao.fi/icons/chains/rsz_optimism.jpg',
+  base: 'https://icons.llamao.fi/icons/chains/rsz_base.jpg',
+  avalanche: 'https://icons.llamao.fi/icons/chains/rsz_avalanche.jpg',
+  bsc: 'https://icons.llamao.fi/icons/chains/rsz_binance.jpg',
+  aptos: 'https://icons.llamao.fi/icons/chains/rsz_aptos.jpg',
+  bitcoin: 'https://icons.llamao.fi/icons/chains/rsz_bitcoin.jpg',
+  blast: 'https://icons.llamao.fi/icons/chains/rsz_blast.jpg',
+  celo: 'https://icons.llamao.fi/icons/chains/rsz_celo.jpg',
+  fantom: 'https://icons.llamao.fi/icons/chains/rsz_fantom.jpg',
+  hyperliquid: 'https://app.hyperliquid.xyz/favicon.ico',
+  linea: 'https://icons.llamao.fi/icons/chains/rsz_linea.jpg',
+  mantle: 'https://icons.llamao.fi/icons/chains/rsz_mantle.jpg',
+  scroll: 'https://icons.llamao.fi/icons/chains/rsz_scroll.jpg',
+  sui: 'https://icons.llamao.fi/icons/chains/rsz_sui.jpg',
+  tron: 'https://icons.llamao.fi/icons/chains/rsz_tron.jpg',
+  zksync: 'https://icons.llamao.fi/icons/chains/rsz_zksync%20era.jpg',
+};

@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-omni-navy text-omni-white antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-omni-blue hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-150 shadow-lg hover:shadow-xl;
+  }
+  
+  .btn-secondary {
+    @apply border-2 border-omni-blue text-omni-blue hover:bg-omni-blue hover:text-white font-semibold py-3 px-6 rounded-lg transition-all duration-150;
+  }
+  
+  .card {
+    @apply bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700;
+  }
+  
+  .card-hover {
+    @apply card hover:border-omni-blue hover:shadow-omni-blue/20 transition-all duration-250;
+  }
+}
