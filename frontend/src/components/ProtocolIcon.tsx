@@ -21,13 +21,7 @@ export function ProtocolIcon({ protocol, className = 'w-6 h-6' }: ProtocolIconPr
       alt={protocol}
       className={className}
       loading="lazy"
-      onError={(e) => {
-        console.error(`Failed to load logo for ${protocol}:`, logoUrl);
-        setFailed(true);
-      }}
-      onLoad={() => {
-        console.log(`Successfully loaded logo for ${protocol}:`, logoUrl);
-      }}
+      onError={() => setFailed(true)}
       style={{ objectFit: 'contain' }}
     />
   );

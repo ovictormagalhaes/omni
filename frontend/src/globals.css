@@ -6,22 +6,71 @@
   body {
     @apply bg-omni-navy text-omni-white antialiased;
   }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-700 rounded-full hover:bg-slate-600;
+  }
+
+  /* Better select styling */
+  select option {
+    @apply bg-slate-800 text-white;
+  }
+
+  /* Range slider styling */
+  input[type="range"] {
+    @apply appearance-none bg-transparent cursor-pointer;
+  }
+  input[type="range"]::-webkit-slider-track {
+    @apply h-1.5 rounded-full bg-slate-700;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    @apply appearance-none w-4 h-4 rounded-full bg-omni-blue border-2 border-white shadow-glow-sm -mt-[5px];
+  }
+  input[type="range"]::-moz-range-track {
+    @apply h-1.5 rounded-full bg-slate-700;
+  }
+  input[type="range"]::-moz-range-thumb {
+    @apply w-4 h-4 rounded-full bg-omni-blue border-2 border-white shadow-glow-sm;
+  }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-omni-blue hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-150 shadow-lg hover:shadow-xl;
+    @apply bg-omni-blue hover:bg-omni-blue-dark text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-glow-blue active:scale-[0.98];
   }
-  
+
   .btn-secondary {
-    @apply border-2 border-omni-blue text-omni-blue hover:bg-omni-blue hover:text-white font-semibold py-3 px-6 rounded-lg transition-all duration-150;
+    @apply border border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-500 font-semibold py-3 px-6 rounded-xl transition-all duration-200 active:scale-[0.98];
   }
-  
+
   .card {
-    @apply bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700;
+    @apply bg-slate-800/60 backdrop-blur-sm rounded-2xl p-6 shadow-card border border-slate-700/50;
   }
-  
+
   .card-hover {
-    @apply card hover:border-omni-blue hover:shadow-omni-blue/20 transition-all duration-250;
+    @apply card hover:border-omni-blue/40 hover:shadow-card-hover transition-all duration-300;
+  }
+
+  .glass {
+    @apply bg-slate-800/40 backdrop-blur-xl border border-slate-700/30;
+  }
+
+  .input-field {
+    @apply w-full bg-slate-800/80 border border-slate-600/50 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-omni-blue/50 focus:border-omni-blue/50 transition-all duration-200;
+  }
+
+  .dropdown-menu {
+    @apply absolute z-20 w-full mt-2 bg-slate-800 border border-slate-600/50 rounded-xl shadow-2xl max-h-64 overflow-y-auto backdrop-blur-xl;
+  }
+
+  .badge {
+    @apply px-2.5 py-1 rounded-full text-xs font-semibold border;
   }
 }

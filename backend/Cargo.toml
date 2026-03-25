@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["OMNI Protocol"]
 description = "Omnichain lending rate aggregator"
+default-run = "omni-api"
 
 [lib]
 name = "omni_backend"
@@ -38,7 +39,7 @@ reqwest = { version = "0.11", features = ["json"] }
 redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
 
 # MongoDB
-mongodb = "3.1"
+mongodb = "3.2"
 bson = { version = "2.13", features = ["chrono-0_4"] }
 
 # GraphQL client (for Aave Subgraph)

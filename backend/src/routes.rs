@@ -57,65 +57,6 @@ pub async fn get_rates(
     Ok(Json(response))
 }
 
-// ============================================================================
-// ASSETS ENDPOINT
-// ============================================================================
-
-#[derive(serde::Serialize)]
-pub struct AssetInfo {
-    pub symbol: String,
-    pub categories: Vec<String>,
-}
-
-#[derive(serde::Serialize)]
-pub struct AssetsResponse {
-    pub success: bool,
-    pub assets: Vec<AssetInfo>,
-    pub count: usize,
-}
-
-/// GET /api/v1/assets
-/// Returns distinct assets available in the live protocol data, grouped by category.
-pub async fn get_assets(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<AssetsResponse>, AppError> {
-    let aggregator = RateAggregator::new(state.config.clone());
-    let query = crate::models::RateQuery {
-        action: None,
-        assets: None,
-        chains: None,
-        protocols: None,
-        operation_types: None,
-        asset_categories: None,
-        min_liquidity: 0,
-    };
-    let results = aggregator.get_rates(&query).await.unwrap_or_default();
-
-    let mut seen = std::collections::HashSet::new();
-    let mut assets: Vec<AssetInfo> = results
-        .into_iter()
-        .filter_map(|r| {
-            let symbol = r.asset.symbol().to_uppercase();
-            if seen.insert(symbol.clone()) {
-                let cats = r.asset.category();
-                let categories = if cats.is_empty() {
-                    vec!["other".to_string()]
-                } else {
-                    cats.iter().map(|c| format!("{:?}", c).to_lowercase().replace('_', "-")).collect()
-                };
-                Some(AssetInfo { symbol, categories })
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    assets.sort_by(|a, b| a.symbol.cmp(&b.symbol));
-    let count = assets.len();
-
-    Ok(Json(AssetsResponse { success: true, assets, count }))
-}
-
 // Error handling
 pub enum AppError {
     Internal(anyhow::Error),

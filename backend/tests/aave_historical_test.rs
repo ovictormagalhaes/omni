@@ -38,7 +38,7 @@ async fn test_aave_base_usdc_has_historical_data() -> Result<()> {
     
     // Get API key from env
     let api_key = env::var("THE_GRAPH_API_KEY")
-        .unwrap_or_else(|_| "13124d1f498df89160c42e0b10d17b8f".to_string());
+        .expect("THE_GRAPH_API_KEY must be set");
     
     // Aave Base subgraph
     let subgraph_id = "GQFbb95cE6d8mV989mL5figjaGaKCQB3xqYrr1bRyXqF";

@@ -28,7 +28,6 @@ async fn create_app(config: Config) -> anyhow::Result<Router> {
         .route("/api/v1/rates", get(routes::get_rates))
         .route("/api/v1/rates/history", get(routes::vault_history))
         .route("/api/v1/historical/backtest", get(routes::backtest))
-        .route("/api/v1/assets", get(routes::get_assets))
         .layer(cors)
         .with_state(app_state);
 

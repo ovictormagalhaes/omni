@@ -63,8 +63,8 @@ interface StatTileProps {
 
 function StatTile({ label, value, sub, highlight, icon }: StatTileProps) {
   return (
-    <div className="bg-slate-900/60 border border-slate-700 rounded-lg p-3 flex flex-col gap-1">
-      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+    <div className="bg-slate-800/60 border border-slate-700/30 rounded-xl p-3 flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
         {icon}
         {label}
       </div>
@@ -75,7 +75,7 @@ function StatTile({ label, value, sub, highlight, icon }: StatTileProps) {
       >
         {value}
       </span>
-      {sub && <span className="text-xs text-slate-500">{sub}</span>}
+      {sub && <span className="text-[10px] text-slate-500">{sub}</span>}
     </div>
   )
 }
@@ -149,11 +149,13 @@ export default function VaultDetailDrawer({ vault, action, onClose }: VaultDetai
       />
 
       {/* Drawer panel */}
-      <aside className="fixed top-0 right-0 h-full w-full max-w-lg bg-slate-900 border-l border-slate-700 z-50 flex flex-col shadow-2xl overflow-hidden">
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700 shrink-0">
+      <aside className="fixed top-0 right-0 h-full w-full max-w-lg bg-slate-900/95 backdrop-blur-xl border-l border-slate-700/30 z-50 flex flex-col shadow-drawer overflow-hidden animate-slide-in-right">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/30 shrink-0">
           <div className="flex items-center gap-3">
-            <ProtocolIcon protocol={vault.protocol} className="w-7 h-7" />
+            <div className="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-700/50 flex items-center justify-center">
+              <ProtocolIcon protocol={vault.protocol} className="w-5 h-5" />
+            </div>
             <div>
               <h2 className="text-white font-bold text-base leading-tight capitalize">
                 {vault.protocol}
@@ -171,24 +173,24 @@ export default function VaultDetailDrawer({ vault, action, onClose }: VaultDetai
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-slate-800"
+            className="text-slate-500 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-slate-800/60"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* ── Scrollable body ──────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
 
           {/* Asset + type badge */}
           <div className="flex items-center gap-3">
-            <span className="text-3xl font-mono font-extrabold text-white">{vault.asset}</span>
-            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+            <span className="text-2xl font-mono font-extrabold text-white">{vault.asset}</span>
+            <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
               vault.operationType === 'vault'
-                ? 'bg-orange-500/15 text-orange-400 border-orange-500/30'
+                ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
                 : vault.operationType === 'staking'
-                ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
-                : 'bg-green-500/15 text-green-400 border-green-500/30'
+                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
             }`}>
               {capitalize(vault.operationType)}
             </span>
@@ -294,7 +296,7 @@ export default function VaultDetailDrawer({ vault, action, onClose }: VaultDetai
             </div>
 
             {/* Chart area */}
-            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3">
+            <div className="bg-slate-800/40 border border-slate-700/30 rounded-xl p-3">
               {loading && (
                 <div className="flex items-center justify-center text-slate-500 text-sm" style={{ height: 220 }}>
                   <div className="flex items-center gap-2">
@@ -331,19 +333,19 @@ export default function VaultDetailDrawer({ vault, action, onClose }: VaultDetai
             </div>
 
             {/* Future projection placeholder hint */}
-            <p className="text-xs text-slate-600 text-center">
-              Backtest &amp; projection ─ coming soon
+            <p className="text-[10px] text-slate-600 text-center">
+              Backtest &amp; projection — coming soon
             </p>
           </div>
         </div>
 
-        {/* ── Footer CTA ───────────────────────────────────────────────────── */}
-        <div className="px-5 py-4 border-t border-slate-700 shrink-0">
+        {/* Footer CTA */}
+        <div className="px-5 py-4 border-t border-slate-700/30 shrink-0">
           <a
             href={vault.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-3 bg-omni-blue hover:bg-blue-600 text-white rounded-xl font-semibold text-sm transition-colors"
+            className="flex items-center justify-center gap-2 w-full py-3 bg-omni-blue hover:bg-omni-blue-dark text-white rounded-xl font-semibold text-sm transition-all duration-200 shadow-lg shadow-omni-blue/10"
           >
             {action === 'supply' ? 'Supply' : 'Borrow'} on{' '}
             {capitalize(vault.protocol)}

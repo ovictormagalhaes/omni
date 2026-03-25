@@ -26,14 +26,14 @@ export default function Logo({ size = 'medium', iconOnly = false, className = ''
   }
 
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
+    <div className={`flex items-center gap-2.5 ${className}`}>
       <img
         src="/logo-icon.svg"
         alt="OMNI"
         width={width}
         height={height}
       />
-      <span className={`${text} font-bold bg-gradient-to-r from-omni-blue to-omni-red bg-clip-text text-transparent`}>
+      <span className={`${text} font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent`}>
         OMNI
       </span>
     </div>

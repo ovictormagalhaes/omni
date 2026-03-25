@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { ChevronDown, ArrowRight, Zap, TrendingUp, TrendingDown, RefreshCw, DollarSign, ArrowLeft } from 'lucide-react'
-import { searchRates, fetchAvailableAssets, AssetInfo, RateResult } from '../lib/api'
+import { searchRates, RateResult } from '../lib/api'
 import { ProtocolIcon } from './ProtocolIcon'
 import { ChainIcon } from './ChainIcon'
 
@@ -68,14 +68,6 @@ interface FilterPanelProps {
   title: string
   icon: React.ReactNode
   accentColor: string
-  availableAssets: AssetInfo[]
-  assetsLoading: boolean
-  selectedAssets: string[]
-  onToggleAsset: (symbol: string) => void
-  onSelectAllAssets: () => void
-  onDeselectAllAssets: () => void
-  isAssetOpen: boolean
-  onToggleAssetOpen: () => void
   selectedAssetCategory: AssetCategory | null
   onSetAssetCategory: (cat: AssetCategory | null) => void
   selectedChains: Chain[]
@@ -93,12 +85,6 @@ interface FilterPanelProps {
 }
 
 function FilterPanel(props: FilterPanelProps) {
-  const assetLabel = () => {
-    if (props.assetsLoading) return 'Loading...'
-    if (props.selectedAssets.length === 0 || props.selectedAssets.length === props.availableAssets.length) return 'All Assets'
-    if (props.selectedAssets.length === 1) return props.selectedAssets[0]
-    return `${props.selectedAssets.length} assets`
-  }
   const chainLabel = () => {
     if (props.selectedChains.length === CHAINS.length) return 'All Chains'
     if (props.selectedChains.length === 1) return CHAINS.find(c => c.value === props.selectedChains[0])?.label ?? '1 chain'
@@ -111,57 +97,30 @@ function FilterPanel(props: FilterPanelProps) {
   }
 
   return (
-    <div className={`card border-l-4 ${props.accentColor}`}>
-      <div className="flex items-center gap-2 mb-5">
-        {props.icon}
-        <h3 className="text-xl font-semibold text-white">{props.title}</h3>
+    <div className={`card border-l-2 ${props.accentColor}`}>
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-9 h-9 rounded-lg bg-slate-800/80 border border-slate-700/50 flex items-center justify-center">
+          {props.icon}
+        </div>
+        <h3 className="text-lg font-semibold text-white">{props.title}</h3>
       </div>
 
       <div className="space-y-4">
-        {/* Assets */}
-        <div className="relative">
-          <label className="block text-sm font-medium text-omni-silver mb-2">Asset</label>
-          <button
-            onClick={props.onToggleAssetOpen}
-            disabled={props.assetsLoading}
-            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white flex items-center justify-between hover:border-slate-500 transition-colors disabled:opacity-60"
-          >
-            <span>{assetLabel()}</span>
-            <ChevronDown className={`w-5 h-5 transition-transform ${props.isAssetOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {props.isAssetOpen && (
-            <div className="absolute z-20 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg shadow-xl max-h-64 overflow-y-auto">
-              <div className="p-2">
-                <div className="flex gap-2 mb-2 pb-2 border-b border-slate-600">
-                  <button onClick={props.onSelectAllAssets} className="flex-1 px-3 py-1.5 text-xs font-medium bg-omni-blue text-white rounded hover:bg-blue-600 transition-colors">✓ All</button>
-                  <button onClick={props.onDeselectAllAssets} className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-600 text-white rounded hover:bg-slate-500 transition-colors">✗ None</button>
-                </div>
-                {props.availableAssets.map(a => (
-                  <label key={a.symbol} className="flex items-center px-3 py-2 hover:bg-slate-600 rounded cursor-pointer">
-                    <input type="checkbox" checked={props.selectedAssets.includes(a.symbol)} onChange={() => props.onToggleAsset(a.symbol)} className="mr-3 w-4 h-4 text-omni-blue bg-slate-600 border-slate-500 rounded" />
-                    <span className="text-white font-mono text-sm">{a.symbol}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Asset Category */}
         <div>
-          <label className="block text-sm font-medium text-omni-silver mb-2">Asset Category</label>
+          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Asset Category</label>
           <div className="flex flex-wrap gap-2">
             {ASSET_CATEGORIES.map(cat => (
               <button
                 key={cat.value}
                 onClick={() => props.onSetAssetCategory(props.selectedAssetCategory === cat.value ? null : cat.value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
                   props.selectedAssetCategory === cat.value
-                    ? 'bg-omni-gold text-slate-900'
-                    : 'bg-slate-700 text-omni-silver hover:bg-slate-600'
+                    ? 'bg-omni-gold/15 text-omni-gold-light border border-omni-gold/30'
+                    : 'bg-slate-800/60 text-slate-500 border border-slate-700/30 hover:text-slate-300 hover:border-slate-600'
                 }`}
               >
-                {props.selectedAssetCategory === cat.value && '✓ '}{cat.label}
+                {cat.label}
               </button>
             ))}
           </div>
@@ -169,26 +128,26 @@ function FilterPanel(props: FilterPanelProps) {
 
         {/* Chains */}
         <div className="relative">
-          <label className="block text-sm font-medium text-omni-silver mb-2">Chain</label>
+          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Chain</label>
           <button
             onClick={props.onToggleChainsOpen}
-            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white flex items-center justify-between hover:border-slate-500 transition-colors"
+            className="input-field flex items-center justify-between"
           >
-            <span>{chainLabel()}</span>
-            <ChevronDown className={`w-5 h-5 transition-transform ${props.isChainsOpen ? 'rotate-180' : ''}`} />
+            <span className="text-sm">{chainLabel()}</span>
+            <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${props.isChainsOpen ? 'rotate-180' : ''}`} />
           </button>
           {props.isChainsOpen && (
-            <div className="absolute z-20 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+            <div className="dropdown-menu max-h-80">
               <div className="p-2">
-                <div className="flex gap-2 mb-2 pb-2 border-b border-slate-600">
-                  <button onClick={props.onSelectAllChains} className="flex-1 px-3 py-1.5 text-xs font-medium bg-omni-blue text-white rounded hover:bg-blue-600 transition-colors">✓ All</button>
-                  <button onClick={props.onDeselectAllChains} className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-600 text-white rounded hover:bg-slate-500 transition-colors">✗ None</button>
+                <div className="flex gap-2 mb-2 pb-2 border-b border-slate-700/50">
+                  <button onClick={props.onSelectAllChains} className="flex-1 px-3 py-1.5 text-xs font-medium bg-omni-blue/10 text-omni-blue-light rounded-lg hover:bg-omni-blue/20 transition-colors">Select All</button>
+                  <button onClick={props.onDeselectAllChains} className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-700/50 text-slate-400 rounded-lg hover:bg-slate-700 transition-colors">Clear</button>
                 </div>
                 {CHAINS.map(chain => (
-                  <label key={chain.value} className="flex items-center px-3 py-2 hover:bg-slate-600 rounded cursor-pointer">
-                    <input type="checkbox" checked={props.selectedChains.includes(chain.value)} onChange={() => props.onToggleChain(chain.value)} className="mr-3 w-4 h-4 text-omni-blue bg-slate-600 border-slate-500 rounded" />
+                  <label key={chain.value} className="flex items-center px-3 py-2 hover:bg-slate-700/50 rounded-lg cursor-pointer transition-colors">
+                    <input type="checkbox" checked={props.selectedChains.includes(chain.value)} onChange={() => props.onToggleChain(chain.value)} className="mr-3 w-3.5 h-3.5 text-omni-blue bg-slate-700 border-slate-600 rounded focus:ring-omni-blue" />
                     <ChainIcon chain={chain.value} className="w-4 h-4 mr-2" />
-                    <span className="text-white text-sm">{chain.label}</span>
+                    <span className="text-sm text-slate-300">{chain.label}</span>
                   </label>
                 ))}
               </div>
@@ -198,26 +157,26 @@ function FilterPanel(props: FilterPanelProps) {
 
         {/* Protocols */}
         <div className="relative">
-          <label className="block text-sm font-medium text-omni-silver mb-2">Protocol</label>
+          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Protocol</label>
           <button
             onClick={props.onToggleProtocolsOpen}
-            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white flex items-center justify-between hover:border-slate-500 transition-colors"
+            className="input-field flex items-center justify-between"
           >
-            <span>{protocolLabel()}</span>
-            <ChevronDown className={`w-5 h-5 transition-transform ${props.isProtocolsOpen ? 'rotate-180' : ''}`} />
+            <span className="text-sm">{protocolLabel()}</span>
+            <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${props.isProtocolsOpen ? 'rotate-180' : ''}`} />
           </button>
           {props.isProtocolsOpen && (
-            <div className="absolute z-20 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+            <div className="dropdown-menu">
               <div className="p-2">
-                <div className="flex gap-2 mb-2 pb-2 border-b border-slate-600">
-                  <button onClick={props.onSelectAllProtocols} className="flex-1 px-3 py-1.5 text-xs font-medium bg-omni-blue text-white rounded hover:bg-blue-600 transition-colors">✓ All</button>
-                  <button onClick={props.onDeselectAllProtocols} className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-600 text-white rounded hover:bg-slate-500 transition-colors">✗ None</button>
+                <div className="flex gap-2 mb-2 pb-2 border-b border-slate-700/50">
+                  <button onClick={props.onSelectAllProtocols} className="flex-1 px-3 py-1.5 text-xs font-medium bg-omni-blue/10 text-omni-blue-light rounded-lg hover:bg-omni-blue/20 transition-colors">Select All</button>
+                  <button onClick={props.onDeselectAllProtocols} className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-700/50 text-slate-400 rounded-lg hover:bg-slate-700 transition-colors">Clear</button>
                 </div>
                 {PROTOCOLS.map(protocol => (
-                  <label key={protocol.value} className="flex items-center px-3 py-2 hover:bg-slate-600 rounded cursor-pointer">
-                    <input type="checkbox" checked={props.selectedProtocols.includes(protocol.value)} onChange={() => props.onToggleProtocol(protocol.value)} className="mr-3 w-4 h-4 text-omni-blue bg-slate-600 border-slate-500 rounded" />
+                  <label key={protocol.value} className="flex items-center px-3 py-2 hover:bg-slate-700/50 rounded-lg cursor-pointer transition-colors">
+                    <input type="checkbox" checked={props.selectedProtocols.includes(protocol.value)} onChange={() => props.onToggleProtocol(protocol.value)} className="mr-3 w-3.5 h-3.5 text-omni-blue bg-slate-700 border-slate-600 rounded focus:ring-omni-blue" />
                     <ProtocolIcon protocol={protocol.value} className="w-4 h-4 mr-2" />
-                    <span className="text-white text-sm">{protocol.label}</span>
+                    <span className="text-sm text-slate-300">{protocol.label}</span>
                   </label>
                 ))}
               </div>
@@ -233,24 +192,18 @@ function FilterPanel(props: FilterPanelProps) {
 
 export default function StrategyBuilder() {
   const [currentStep, setCurrentStep] = useState<Step>(1)
-  const [availableAssets, setAvailableAssets] = useState<AssetInfo[]>([])
-  const [assetsLoading, setAssetsLoading] = useState(true)
-  
+
   // Supply filters
-  const [supplyAssets, setSupplyAssets] = useState<string[]>([])
   const [supplyChains, setSupplyChains] = useState<Chain[]>(CHAINS.map(c => c.value))
   const [supplyProtocols, setSupplyProtocols] = useState<Protocol[]>(PROTOCOLS.map(p => p.value))
   const [supplyAssetCategory, setSupplyAssetCategory] = useState<AssetCategory | null>(null)
-  const [supplyAssetOpen, setSupplyAssetOpen] = useState(false)
   const [supplyChainsOpen, setSupplyChainsOpen] = useState(false)
   const [supplyProtocolsOpen, setSupplyProtocolsOpen] = useState(false)
   
   // Borrow filters
-  const [borrowAssets, setBorrowAssets] = useState<string[]>([])
   const [borrowChains, setBorrowChains] = useState<Chain[]>(CHAINS.map(c => c.value))
   const [borrowProtocols, setBorrowProtocols] = useState<Protocol[]>(PROTOCOLS.map(p => p.value))
   const [borrowAssetCategory, setBorrowAssetCategory] = useState<AssetCategory | null>(null)
-  const [borrowAssetOpen, setBorrowAssetOpen] = useState(false)
   const [borrowChainsOpen, setBorrowChainsOpen] = useState(false)
   const [borrowProtocolsOpen, setBorrowProtocolsOpen] = useState(false)
   
@@ -260,38 +213,25 @@ export default function StrategyBuilder() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchAvailableAssets().then(assets => {
-      if (assets.length > 0) {
-        setAvailableAssets(assets)
-        setSupplyAssets(assets.map(a => a.symbol))
-        setBorrowAssets(assets.map(a => a.symbol))
-      }
-      setAssetsLoading(false)
-    })
-  }, [])
-
   const toParam = (arr: string[], total: number) =>
     arr.length > 0 && arr.length < total ? arr.join(',') : undefined
 
   const handleSearchPairs = async () => {
     setLoading(true)
     setError(null)
-    setSupplyAssetOpen(false); setSupplyChainsOpen(false); setSupplyProtocolsOpen(false)
-    setBorrowAssetOpen(false); setBorrowChainsOpen(false); setBorrowProtocolsOpen(false)
+    setSupplyChainsOpen(false); setSupplyProtocolsOpen(false)
+    setBorrowChainsOpen(false); setBorrowProtocolsOpen(false)
 
     try {
       const [supplyData, borrowData] = await Promise.all([
         searchRates({
           action: 'supply',
-          assets: toParam(supplyAssets, availableAssets.length),
           chains: toParam(supplyChains, CHAINS.length),
           protocols: toParam(supplyProtocols, PROTOCOLS.length),
           asset_categories: supplyAssetCategory || undefined,
         }),
         searchRates({
           action: 'borrow',
-          assets: toParam(borrowAssets, availableAssets.length),
           chains: toParam(borrowChains, CHAINS.length),
           protocols: toParam(borrowProtocols, PROTOCOLS.length),
           asset_categories: borrowAssetCategory || undefined,
@@ -344,28 +284,30 @@ export default function StrategyBuilder() {
     <div className="space-y-8" id="strategy">
       {/* Header */}
       <div className="card">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Zap className="w-6 h-6 text-omni-gold" />
-              <h2 className="text-2xl font-bold text-white">Strategy Builder</h2>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-omni-gold/10 border border-omni-gold/20 flex items-center justify-center">
+              <Zap className="w-5 h-5 text-omni-gold" />
             </div>
-            <p className="text-omni-silver text-sm">
-              Build your carry-trade strategy step by step
-            </p>
+            <div>
+              <h2 className="text-xl font-bold text-white">Strategy Builder</h2>
+              <p className="text-slate-500 text-xs">Build your carry-trade strategy step by step</p>
+            </div>
           </div>
           {/* Stepper indicator */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {[1, 2, 3, 4].map(step => (
               <div key={step} className="flex items-center">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                  currentStep === step ? 'bg-omni-gold text-slate-900' :
-                  currentStep > step ? 'bg-green-600 text-white' :
-                  'bg-slate-700 text-omni-silver'
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-semibold transition-all duration-200 ${
+                  currentStep === step ? 'bg-omni-gold text-slate-900 shadow-lg shadow-omni-gold/20' :
+                  currentStep > step ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' :
+                  'bg-slate-800/60 text-slate-500 border border-slate-700/30'
                 }`}>
-                  {step}
+                  {currentStep > step ? (
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                  ) : step}
                 </div>
-                {step < 4 && <div className={`w-8 h-0.5 ${currentStep > step ? 'bg-green-600' : 'bg-slate-700'}`} />}
+                {step < 4 && <div className={`w-6 h-px ${currentStep > step ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`} />}
               </div>
             ))}
           </div>
@@ -374,7 +316,7 @@ export default function StrategyBuilder() {
 
       {/* Error */}
       {error && (
-        <div className="card border border-red-500/30 bg-red-900/10 text-red-400 text-sm">{error}</div>
+        <div className="card border border-red-500/20 bg-red-500/5 text-red-400 text-sm">{error}</div>
       )}
 
       {/* Step 1: Supply Rules */}
@@ -384,14 +326,6 @@ export default function StrategyBuilder() {
             title="Supply Rules"
             icon={<TrendingUp className="w-5 h-5 text-omni-blue" />}
             accentColor="border-omni-blue"
-            availableAssets={availableAssets}
-            assetsLoading={assetsLoading}
-            selectedAssets={supplyAssets}
-            onToggleAsset={s => setSupplyAssets(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
-            onSelectAllAssets={() => setSupplyAssets(availableAssets.map(a => a.symbol))}
-            onDeselectAllAssets={() => setSupplyAssets([])}
-            isAssetOpen={supplyAssetOpen}
-            onToggleAssetOpen={() => setSupplyAssetOpen(o => !o)}
             selectedAssetCategory={supplyAssetCategory}
             onSetAssetCategory={setSupplyAssetCategory}
             selectedChains={supplyChains}
@@ -423,14 +357,6 @@ export default function StrategyBuilder() {
             title="Borrow Rules"
             icon={<TrendingDown className="w-5 h-5 text-omni-red" />}
             accentColor="border-omni-red"
-            availableAssets={availableAssets}
-            assetsLoading={assetsLoading}
-            selectedAssets={borrowAssets}
-            onToggleAsset={s => setBorrowAssets(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
-            onSelectAllAssets={() => setBorrowAssets(availableAssets.map(a => a.symbol))}
-            onDeselectAllAssets={() => setBorrowAssets([])}
-            isAssetOpen={borrowAssetOpen}
-            onToggleAssetOpen={() => setBorrowAssetOpen(o => !o)}
             selectedAssetCategory={borrowAssetCategory}
             onSetAssetCategory={setBorrowAssetCategory}
             selectedChains={borrowChains}
@@ -601,51 +527,47 @@ function PairCard({ pair, formatApy, formatNum }: {
           {formatApy(netApy)}
         </span>
       </div>
-      <div className="bg-slate-800/50 rounded-lg p-3 mb-2">
-        <div className="flex items-center gap-1 mb-2">
-          <TrendingUp className="w-3.5 h-3.5 text-omni-blue" />
-          <span className="text-xs font-semibold text-omni-blue uppercase">Supply</span>
+      <div className="bg-slate-800/40 border border-slate-700/20 rounded-xl p-3 mb-2">
+        <div className="flex items-center gap-1.5 mb-2">
+          <TrendingUp className="w-3.5 h-3.5 text-omni-blue-light" />
+          <span className="text-[10px] font-semibold text-omni-blue-light uppercase tracking-wider">Supply</span>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ProtocolIcon protocol={supply.protocol} className="w-5 h-5" />
             <div>
-              <div className="text-sm font-medium text-white">
-                {supply.asset}
-              </div>
+              <div className="text-sm font-medium text-white">{supply.asset}</div>
               <div className="flex items-center gap-1 mt-0.5">
                 <ChainIcon chain={supply.chain} className="w-3 h-3" />
-                <span className="text-xs text-omni-silver capitalize">{supply.chain}</span>
+                <span className="text-[10px] text-slate-500 capitalize">{supply.chain}</span>
               </div>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-sm font-bold text-green-400">{supply.netApy.toFixed(2)}%</div>
-            <div className="text-xs text-omni-silver">{formatNum(supply.liquidity)}</div>
+            <div className="text-sm font-bold font-mono text-emerald-400">{supply.netApy.toFixed(2)}%</div>
+            <div className="text-[10px] text-slate-500">{formatNum(supply.liquidity)}</div>
           </div>
         </div>
       </div>
-      <div className="bg-slate-800/50 rounded-lg p-3">
-        <div className="flex items-center gap-1 mb-2">
-          <TrendingDown className="w-3.5 h-3.5 text-omni-red" />
-          <span className="text-xs font-semibold text-omni-red uppercase">Borrow</span>
+      <div className="bg-slate-800/40 border border-slate-700/20 rounded-xl p-3">
+        <div className="flex items-center gap-1.5 mb-2">
+          <TrendingDown className="w-3.5 h-3.5 text-omni-red-light" />
+          <span className="text-[10px] font-semibold text-omni-red-light uppercase tracking-wider">Borrow</span>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ProtocolIcon protocol={borrow.protocol} className="w-5 h-5" />
             <div>
-              <div className="text-sm font-medium text-white">
-                {borrow.asset}
-              </div>
+              <div className="text-sm font-medium text-white">{borrow.asset}</div>
               <div className="flex items-center gap-1 mt-0.5">
                 <ChainIcon chain={borrow.chain} className="w-3 h-3" />
-                <span className="text-xs text-omni-silver capitalize">{borrow.chain}</span>
+                <span className="text-[10px] text-slate-500 capitalize">{borrow.chain}</span>
               </div>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-sm font-bold text-red-400">{borrow.netApy.toFixed(2)}%</div>
-            <div className="text-xs text-omni-silver">{formatNum(borrow.liquidity)}</div>
+            <div className="text-sm font-bold font-mono text-red-400">{borrow.netApy.toFixed(2)}%</div>
+            <div className="text-[10px] text-slate-500">{formatNum(borrow.liquidity)}</div>
           </div>
         </div>
       </div>
@@ -723,17 +645,19 @@ function SimulationView({ pairs, formatApy, formatNum }: {
   return (
     <div className="space-y-6">
       {/* Amount Controls */}
-      <div className="card bg-slate-800/50">
-        <h4 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-omni-gold" />
+      <div className="card">
+        <h4 className="text-base font-semibold text-white mb-5 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-omni-gold/10 border border-omni-gold/20 flex items-center justify-center">
+            <DollarSign className="w-4 h-4 text-omni-gold" />
+          </div>
           Amount Simulation
         </h4>
-        
-        <div className="space-y-6">
+
+        <div className="space-y-5">
           {/* Supply Amount Control */}
-          <div className="bg-slate-700/30 rounded-lg p-4">
+          <div className="bg-slate-800/40 border border-slate-700/30 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium text-white flex items-center gap-2">
+              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-omni-blue" />
                 Supply Amount
               </label>
@@ -742,7 +666,7 @@ function SimulationView({ pairs, formatApy, formatNum }: {
                 value={supplyInput}
                 onChange={(e) => handleSupplyInputChange(e.target.value)}
                 onBlur={() => setSupplyInput(supplyAmount.toString())}
-                className="w-32 px-3 py-1.5 bg-slate-600 border border-slate-500 rounded text-white text-right text-sm focus:outline-none focus:ring-2 focus:ring-omni-blue"
+                className="w-28 px-3 py-1.5 bg-slate-800/80 border border-slate-600/50 rounded-lg text-white text-right text-sm font-mono focus:outline-none focus:ring-2 focus:ring-omni-blue/50"
                 placeholder="Amount"
               />
             </div>
@@ -753,18 +677,18 @@ function SimulationView({ pairs, formatApy, formatNum }: {
               step="100"
               value={supplyAmount}
               onChange={(e) => handleSupplySliderChange(Number(e.target.value))}
-              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider"
+              className="w-full"
             />
-            <div className="flex justify-between text-xs text-omni-silver mt-1">
+            <div className="flex justify-between text-[10px] text-slate-600 mt-1.5">
               <span>$100</span>
               <span>$100K</span>
             </div>
           </div>
 
           {/* Borrow Percentage Control */}
-          <div className="bg-slate-700/30 rounded-lg p-4">
+          <div className="bg-slate-800/40 border border-slate-700/30 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium text-white flex items-center gap-2">
+              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
                 <TrendingDown className="w-4 h-4 text-omni-red" />
                 Borrow Percentage
               </label>
@@ -773,7 +697,7 @@ function SimulationView({ pairs, formatApy, formatNum }: {
                 value={borrowInput}
                 onChange={(e) => handleBorrowInputChange(e.target.value)}
                 onBlur={() => setBorrowInput(borrowPercent.toString())}
-                className="w-32 px-3 py-1.5 bg-slate-600 border border-slate-500 rounded text-white text-right text-sm focus:outline-none focus:ring-2 focus:ring-omni-red"
+                className="w-28 px-3 py-1.5 bg-slate-800/80 border border-slate-600/50 rounded-lg text-white text-right text-sm font-mono focus:outline-none focus:ring-2 focus:ring-omni-red/50"
                 placeholder="Percent"
               />
             </div>
@@ -784,14 +708,14 @@ function SimulationView({ pairs, formatApy, formatNum }: {
               step="1"
               value={borrowPercent}
               onChange={(e) => handleBorrowSliderChange(Number(e.target.value))}
-              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider"
+              className="w-full"
             />
-            <div className="flex justify-between text-xs text-omni-silver mt-1">
+            <div className="flex justify-between text-[10px] text-slate-600 mt-1.5">
               <span>0%</span>
-              <span>Max: {maxBorrowPercent.toFixed(0)}% (Min LTV)</span>
+              <span>Max: {maxBorrowPercent.toFixed(0)}% (LTV)</span>
             </div>
-            <div className="text-sm text-white mt-2">
-              Borrow Amount: <span className="font-bold text-omni-gold">${borrowAmount.toFixed(0)}</span>
+            <div className="text-sm text-slate-400 mt-2">
+              Borrow Amount: <span className="font-semibold text-omni-gold-light font-mono">${borrowAmount.toFixed(0)}</span>
             </div>
           </div>
         </div>
@@ -833,10 +757,10 @@ function SimulationView({ pairs, formatApy, formatNum }: {
 
               {/* Strategy Details */}
               <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="bg-slate-700/50 rounded p-3">
-                  <div className="flex items-center gap-1 mb-2">
-                    <TrendingUp className="w-3 h-3 text-omni-blue" />
-                    <span className="text-xs text-omni-silver">Supply</span>
+                <div className="bg-slate-800/40 border border-slate-700/20 rounded-xl p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <TrendingUp className="w-3 h-3 text-omni-blue-light" />
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">Supply</span>
                   </div>
                   <div className="flex items-center gap-2 mb-2">
                     <ProtocolIcon protocol={result.pair.supply.protocol} className="w-5 h-5" />
@@ -848,13 +772,13 @@ function SimulationView({ pairs, formatApy, formatNum }: {
                       </div>
                     </div>
                   </div>
-                  <div className="text-green-400 font-semibold">{result.pair.supply.netApy.toFixed(2)}% APY</div>
+                  <div className="text-emerald-400 font-semibold font-mono text-sm">{result.pair.supply.netApy.toFixed(2)}% APY</div>
                 </div>
 
-                <div className="bg-slate-700/50 rounded p-3">
-                  <div className="flex items-center gap-1 mb-2">
-                    <TrendingDown className="w-3 h-3 text-omni-red" />
-                    <span className="text-xs text-omni-silver">Borrow</span>
+                <div className="bg-slate-800/40 border border-slate-700/20 rounded-xl p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <TrendingDown className="w-3 h-3 text-omni-red-light" />
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">Borrow</span>
                   </div>
                   <div className="flex items-center gap-2 mb-2">
                     <ProtocolIcon protocol={result.pair.borrow.protocol} className="w-5 h-5" />
@@ -866,12 +790,12 @@ function SimulationView({ pairs, formatApy, formatNum }: {
                       </div>
                     </div>
                   </div>
-                  <div className="text-red-400 font-semibold">{result.pair.borrow.netApy.toFixed(2)}% APY</div>
+                  <div className="text-red-400 font-semibold font-mono text-sm">{result.pair.borrow.netApy.toFixed(2)}% APY</div>
                 </div>
               </div>
 
               {/* Results */}
-              <div className="grid grid-cols-4 gap-2 pt-3 border-t border-slate-700">
+              <div className="grid grid-cols-4 gap-2 pt-3 border-t border-slate-700/30">
                 <div>
                   <div className="text-xs text-omni-silver">Supply</div>
                   <div className="text-sm font-semibold text-white">${supplyAmount.toLocaleString()}</div>
@@ -900,8 +824,8 @@ function SimulationView({ pairs, formatApy, formatNum }: {
         })}
       </div>
 
-      <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 text-xs text-blue-300">
-        <strong>Note:</strong> This simulation uses the minimum LTV of {(minLtv * 100).toFixed(0)}% across all selected strategies. 
+      <div className="bg-omni-blue/5 border border-omni-blue/15 rounded-xl p-3 text-xs text-slate-400">
+        <strong className="text-slate-300">Note:</strong> This simulation uses the minimum LTV of {(minLtv * 100).toFixed(0)}% across all selected strategies. 
         Each strategy shows independent results for the same investment of ${supplyAmount.toLocaleString()} (supply) and ${borrowAmount.toFixed(0)} ({borrowPercent}% borrow).
         {pairs.length > 1 && ' Compare the strategies to find the best NET APY and yearly return.'}
       </div>

@@ -11,13 +11,13 @@ export default function MainTabs() {
   return (
     <div id="rates">
       {/* Tab bar */}
-      <div className="flex gap-1 bg-slate-800/60 p-1 rounded-xl w-fit mb-8">
+      <div className="flex gap-1 p-1 bg-slate-800/40 border border-slate-700/30 rounded-xl w-fit mb-8">
         <button
           onClick={() => setActiveTab('rates')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
             activeTab === 'rates'
-              ? 'bg-omni-blue text-white shadow'
-              : 'text-omni-silver hover:text-white'
+              ? 'bg-omni-blue text-white shadow-lg shadow-omni-blue/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
           }`}
         >
           <Search className="w-4 h-4" />
@@ -26,10 +26,10 @@ export default function MainTabs() {
         <button
           onClick={() => setActiveTab('strategy')}
           id="strategy"
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
             activeTab === 'strategy'
-              ? 'bg-omni-gold text-omni-navy shadow'
-              : 'text-omni-silver hover:text-white'
+              ? 'bg-omni-gold text-omni-navy shadow-lg shadow-omni-gold/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
           }`}
         >
           <Zap className="w-4 h-4" />
@@ -38,8 +38,10 @@ export default function MainTabs() {
       </div>
 
       {/* Content */}
-      {activeTab === 'rates' && <RateFinder />}
-      {activeTab === 'strategy' && <StrategyBuilder />}
+      <div className="animate-fade-in">
+        {activeTab === 'rates' && <RateFinder />}
+        {activeTab === 'strategy' && <StrategyBuilder />}
+      </div>
     </div>
   )
 }

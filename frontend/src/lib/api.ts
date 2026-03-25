@@ -39,7 +39,6 @@ export interface RateResponse {
 
 export interface SearchRatesParams {
   action: 'supply' | 'borrow'
-  assets?: string
   chains?: string
   protocols?: string
   operation_types?: string
@@ -90,33 +89,6 @@ export async function searchRates(params: SearchRatesParams): Promise<RateRespon
     params,
   })
   return response.data
-}
-
-// ─── Available Assets ─────────────────────────────────────────────────────────
-
-export interface AssetInfo {
-  symbol: string
-  categories: string[]
-}
-
-export interface AssetsResponse {
-  success: boolean
-  assets: AssetInfo[]
-  count: number
-}
-
-// Cache a nível de módulo — a requisição HTTP acontece apenas uma vez por sessão
-const _assetsCache: Promise<AssetInfo[]> = (async () => {
-  try {
-    const response = await axios.get<AssetsResponse>(`${API_URL}/api/v1/assets`)
-    return response.data.assets
-  } catch {
-    return []
-  }
-})()
-
-export async function fetchAvailableAssets(): Promise<AssetInfo[]> {
-  return _assetsCache
 }
 
 export async function fetchVaultHistory(
