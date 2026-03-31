@@ -136,8 +136,8 @@ impl RateAggregator {
     }
 
     pub async fn get_rates_with_meta(&self, query: &RateQuery) -> Result<RatesCollectionOutput> {
-        let target_chains = query.parse_chains().unwrap_or_else(|| Chain::all());
-        let target_protocols = query.parse_protocols().unwrap_or_else(|| Protocol::all());
+        let target_chains = query.parse_chains().unwrap_or_else(Chain::all);
+        let target_protocols = query.parse_protocols().unwrap_or_else(Protocol::all);
 
         tracing::debug!(
             "Target chains: {:?}, Target protocols: {:?}",
@@ -340,8 +340,8 @@ impl RateAggregator {
     }
 
     pub async fn get_pools_with_meta(&self, query: &PoolQuery) -> Result<PoolsCollectionOutput> {
-        let target_chains = query.parse_chains().unwrap_or_else(|| Chain::all());
-        let target_protocols = query.parse_protocols().unwrap_or_else(|| Protocol::all());
+        let target_chains = query.parse_chains().unwrap_or_else(Chain::all);
+        let target_protocols = query.parse_protocols().unwrap_or_else(Protocol::all);
 
         type TaskResult = (Protocol, Chain, Result<Vec<PoolRate>>, u128);
         let mut tasks: Vec<tokio::task::JoinHandle<TaskResult>> = Vec::new();

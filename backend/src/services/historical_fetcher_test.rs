@@ -162,10 +162,8 @@ async fn test_fetch_defillama_vault_id_protocols_return_empty_without_vault_id()
 
     // These protocols check rate.vault_id first — with None, they return empty immediately
     for (protocol, chain) in [
-        (Protocol::Jito, Chain::Solana),
         (Protocol::Jupiter, Chain::Solana),
         (Protocol::Compound, Chain::Ethereum),
-        (Protocol::Venus, Chain::BSC),
         (Protocol::Benqi, Chain::Avalanche),
         (Protocol::Pendle, Chain::Ethereum),
         (Protocol::Ethena, Chain::Ethereum),
@@ -247,13 +245,11 @@ fn test_historical_fetcher_implementation_coverage() {
     // DeFi Llama vault_id-based (pool UUID from indexer → yields.llama.fi/chart)
     let _defillama_vault_id: &[Protocol] = &[
         Protocol::Compound, // compound-v3
-        Protocol::Venus,    // venus-*
         Protocol::Benqi,    // benqi-lending
         Protocol::Pendle,   // pendle
         Protocol::Ethena,   // ethena-usde
         Protocol::EtherFi,  // ether.fi-stake/liquid
         Protocol::Jupiter,  // jupiter-staked-sol
-        Protocol::Jito,     // jitosol
     ];
 
     // DeFi Llama search-based (search pools endpoint by project + chain + symbol)
@@ -262,6 +258,8 @@ fn test_historical_fetcher_implementation_coverage() {
         Protocol::RocketPool, // rocket-pool
         Protocol::Euler,      // euler-v2
         Protocol::JustLend,   // justlend
+        Protocol::Jito,       // jito-staked-sol
+        Protocol::Venus,      // venus-core-pool
     ];
 
     // DEX / LP protocols — no rate historical (pool backfill is separate)
@@ -289,8 +287,9 @@ fn test_historical_fetcher_implementation_coverage() {
 fn test_extract_address_from_url_valid() {
     let fetcher = HistoricalFetcher::new(None);
 
-    // Test with 40-character Ethereum address (VALID)
-    let url1 = "https://app.morpho.org/ethereum/vault/0x38989BBA00BDF8181F4082995b3DEAe96163aC5D6aa91cf1a4cdf5ee3102ad37";
+    // Test with 40-character Ethereum address (VALID) — address followed by '/'
+    let url1 =
+        "https://app.morpho.org/ethereum/vault/0x38989BBA00BDF8181F4082995b3DEAe96163aC5D/details";
     let result1 = fetcher.extract_address_from_url(url1);
     assert_eq!(
         result1,

@@ -90,6 +90,12 @@ pub struct AuraIndexer {
     pub client: reqwest::Client,
 }
 
+impl Default for AuraIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuraIndexer {
     pub fn new() -> Self {
         Self {
@@ -245,7 +251,7 @@ fn extract_primary_symbol(name: &str, tokens: &Option<Vec<AuraToken>>) -> String
             }
         }
     }
-    name.split(|c: char| c == '-' || c == '/' || c == ' ')
+    name.split(['-', '/', ' '])
         .next()
         .unwrap_or(name)
         .to_uppercase()

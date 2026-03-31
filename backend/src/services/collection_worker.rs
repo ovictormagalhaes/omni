@@ -31,6 +31,7 @@ pub struct DailyCollectionWorker {
 }
 
 impl DailyCollectionWorker {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         aggregator: RateAggregator,
         historical_service: HistoricalDataService,

@@ -39,6 +39,12 @@ pub struct EthenaIndexer {
     pub client: reqwest::Client,
 }
 
+impl Default for EthenaIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EthenaIndexer {
     pub fn new() -> Self {
         Self {
@@ -90,7 +96,7 @@ impl EthenaIndexer {
         // protocolYield can serve as reward component if different from staking
         let rewards = (yield_data.protocol_yield.value - supply_apy).max(0.0);
 
-        if supply_apy > 10000.0 || supply_apy < -100.0 {
+        if !(-100.0..=10000.0).contains(&supply_apy) {
             tracing::warn!("[Ethena] Suspicious APY value: {}, skipping", supply_apy);
             return Ok(vec![]);
         }

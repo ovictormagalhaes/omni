@@ -27,6 +27,12 @@ pub struct MarinadeIndexer {
     client: reqwest::Client,
 }
 
+impl Default for MarinadeIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MarinadeIndexer {
     pub fn new() -> Self {
         Self {
@@ -62,9 +68,7 @@ impl MarinadeIndexer {
         let apy_response: MarinadeApyResponse = response.json().await?;
         let supply_apy = apy_response.value;
 
-        let mut rates = Vec::new();
-
-        rates.push(ProtocolRate {
+        let rates = vec![ProtocolRate {
             protocol: Protocol::Marinade,
             chain: Chain::Solana,
             asset: Asset::from_symbol("MSOL", "Marinade"),
@@ -85,7 +89,7 @@ impl MarinadeIndexer {
             vault_name: Some("Marinade Staked SOL".to_string()),
             underlying_asset: Some("So11111111111111111111111111111111111111112".to_string()),
             timestamp: Utc::now(),
-        });
+        }];
 
         tracing::info!(
             "Marinade: fetched {} rates with APY {:.2}%",

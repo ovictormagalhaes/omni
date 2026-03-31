@@ -401,7 +401,7 @@ impl HistoricalFetcher {
                     for data_point in net_apy {
                         // x is Unix timestamp in milliseconds
                         let timestamp = DateTime::from_timestamp(data_point.x / 1000, 0)
-                            .unwrap_or_else(|| Utc::now());
+                            .unwrap_or_else(Utc::now);
 
                         // Filter by date range
                         if timestamp >= start_date && timestamp <= end_date {

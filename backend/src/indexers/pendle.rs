@@ -45,6 +45,12 @@ pub struct PendleIndexer {
     client: reqwest::Client,
 }
 
+impl Default for PendleIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PendleIndexer {
     pub fn new() -> Self {
         Self {

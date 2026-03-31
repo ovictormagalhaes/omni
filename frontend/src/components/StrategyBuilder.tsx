@@ -323,14 +323,14 @@ function CarryTradeStrategy() {
           protocols: toParam(selectedProtocols, LENDING_PROTOCOLS.length),
           asset_categories: supplyAsset.asset_categories as string | undefined,
           ...(supplyAsset.assets ? { assets: supplyAsset.assets } : {}),
-        } as any),
+        }),
         searchRates({
           action: 'borrow',
           chains: toParam(selectedChains, CHAINS.length),
           protocols: toParam(selectedProtocols, LENDING_PROTOCOLS.length),
           asset_categories: borrowAsset.asset_categories as string | undefined,
           ...(borrowAsset.assets ? { assets: borrowAsset.assets } : {}),
-        } as any),
+        }),
       ])
       const topSupply = supplyData.results.slice(0, 15)
       const topBorrow = borrowData.results.slice(0, 15)

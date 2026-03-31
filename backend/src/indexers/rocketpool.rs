@@ -20,6 +20,12 @@ pub struct RocketPoolIndexer {
     client: reqwest::Client,
 }
 
+impl Default for RocketPoolIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RocketPoolIndexer {
     pub fn new() -> Self {
         Self {
@@ -61,9 +67,7 @@ impl RocketPoolIndexer {
             0.0
         });
 
-        let mut rates = Vec::new();
-
-        rates.push(ProtocolRate {
+        let rates = vec![ProtocolRate {
             protocol: Protocol::RocketPool,
             chain: Chain::Ethereum,
             asset: Asset::from_symbol("RETH", "Rocket Pool"),
@@ -84,7 +88,7 @@ impl RocketPoolIndexer {
             vault_name: Some("Rocket Pool ETH".to_string()),
             underlying_asset: Some("0x0000000000000000000000000000000000000000".to_string()),
             timestamp: Utc::now(),
-        });
+        }];
 
         tracing::info!(
             "Rocket Pool: fetched {} rates with APY {:.4}%",

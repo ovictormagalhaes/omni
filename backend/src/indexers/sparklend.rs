@@ -48,6 +48,12 @@ pub struct SparkLendIndexer {
     pub client: reqwest::Client,
 }
 
+impl Default for SparkLendIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SparkLendIndexer {
     pub fn new() -> Self {
         Self {
@@ -221,10 +227,7 @@ impl RateIndexer for SparkLendIndexer {
 
 fn normalize_symbol(symbol: &str) -> String {
     let s = symbol.to_uppercase();
-    let base = s
-        .split(|c: char| c == '-' || c == '/' || c == ' ')
-        .next()
-        .unwrap_or(&s);
+    let base = s.split(['-', '/', ' ']).next().unwrap_or(&s);
     base.to_string()
 }
 

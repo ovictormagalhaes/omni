@@ -34,7 +34,7 @@ pub async fn get_rates(
     let total_pages = if total_count == 0 {
         0
     } else {
-        (total_count + page_size - 1) / page_size
+        total_count.div_ceil(page_size)
     };
 
     let response = RateResponse {
@@ -43,8 +43,8 @@ pub async fn get_rates(
         query: QueryInfo {
             action: query.action.clone().unwrap_or(Action::Supply),
             assets: query.parse_assets(),
-            chains: query.parse_chains().unwrap_or_else(|| Chain::all()),
-            protocols: query.parse_protocols().unwrap_or_else(|| Protocol::all()),
+            chains: query.parse_chains().unwrap_or_else(Chain::all),
+            protocols: query.parse_protocols().unwrap_or_else(Protocol::all),
         },
         results,
         count,
@@ -235,8 +235,8 @@ pub async fn vault_history(
 /// - min_volume (optional): minimum 24h volume in USD (default: 0)
 /// - page (optional): page number, 1-indexed (default: 1)
 /// - page_size (optional): results per page, max 100 (default: 20)
-/// GET /api/v1/pools/history
-/// Returns daily fee APR / TVL / volume time-series for a specific pool (90 days).
+///   GET /api/v1/pools/history
+///   Returns daily fee APR / TVL / volume time-series for a specific pool (90 days).
 ///
 /// Query parameters:
 /// - pool_vault_id (optional): unique pool identifier

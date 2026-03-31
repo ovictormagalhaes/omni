@@ -71,6 +71,12 @@ struct MerklOpportunity {
     status: Option<String>,
 }
 
+impl Default for UniswapV4Indexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UniswapV4Indexer {
     pub fn new() -> Self {
         Self {

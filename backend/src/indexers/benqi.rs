@@ -52,6 +52,12 @@ pub struct BenqiIndexer {
     pub defillama_cache: Option<DefiLlamaCache>,
 }
 
+impl Default for BenqiIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BenqiIndexer {
     pub fn new() -> Self {
         Self {
@@ -252,7 +258,7 @@ fn normalize_symbol(symbol: &str) -> String {
     // Benqi symbols may include prefixes like "qi" or suffixes
     let cleaned = s.replace("QI", "");
     cleaned
-        .split(|c: char| c == '-' || c == '/' || c == ' ')
+        .split(['-', '/', ' '])
         .next()
         .unwrap_or(&s)
         .to_string()

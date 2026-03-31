@@ -41,6 +41,12 @@ pub struct SkyIndexer {
     pub client: reqwest::Client,
 }
 
+impl Default for SkyIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SkyIndexer {
     pub fn new() -> Self {
         Self {

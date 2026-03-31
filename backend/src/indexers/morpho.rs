@@ -182,7 +182,7 @@ where
     // Note: High-risk vaults can have extreme but legitimate APYs (e.g., 298,000%)
     // We only filter truly corrupted data (> 1,000,000%)
     match apy_opt {
-        Some(apy) if apy.is_finite() && apy >= -1.0 && apy <= 10000.0 => {
+        Some(apy) if apy.is_finite() && (-1.0..=10000.0).contains(&apy) => {
             if apy > 1.0 {
                 tracing::info!(
                     "Morpho vault with high APY: {:.2}% (may have security risks)",
@@ -348,8 +348,7 @@ impl MorphoIndexer {
             let utilization_rate = 0.0; // allocation is complex, not available
 
             // Consider vault active if TVL > $1000 and APY is reasonable
-            let is_active =
-                total_assets_usd >= 1000.0 && base_apy_percent >= 0.0 && base_apy_percent < 1000.0;
+            let is_active = total_assets_usd >= 1000.0 && (0.0..1000.0).contains(&base_apy_percent);
 
             rates.push(crate::models::ProtocolRate {
                 protocol: Protocol::Morpho,
@@ -365,7 +364,7 @@ impl MorphoIndexer {
                 collateral_ltv: 0.0,
                 total_liquidity: total_assets_usd_u64,
                 available_liquidity: total_assets_usd_u64, // Approximation
-                utilization_rate: utilization_rate,
+                utilization_rate,
                 ltv: 0.0, // Not applicable for vaults
                 operation_type: crate::models::OperationType::Vault,
                 vault_id: Some(vault.address.clone()),
@@ -519,6 +518,7 @@ mod tests {
         let json_response = json!({
             "address": "0x0229dB3921dE71CFa43Cfe9fb6A87b403647A9ae",
             "asset": {
+                "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "symbol": "USDC"
             },
             "avgApy": 0.0332,

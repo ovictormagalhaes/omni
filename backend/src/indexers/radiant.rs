@@ -52,6 +52,12 @@ pub struct RadiantIndexer {
     pub defillama_cache: Option<DefiLlamaCache>,
 }
 
+impl Default for RadiantIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RadiantIndexer {
     pub fn new() -> Self {
         Self {
@@ -263,8 +269,5 @@ impl RateIndexer for RadiantIndexer {
 
 fn normalize_symbol(symbol: &str) -> String {
     let s = symbol.to_uppercase();
-    s.split(|c: char| c == '-' || c == '/' || c == ' ')
-        .next()
-        .unwrap_or(&s)
-        .to_string()
+    s.split(['-', '/', ' ']).next().unwrap_or(&s).to_string()
 }

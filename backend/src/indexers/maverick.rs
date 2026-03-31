@@ -71,6 +71,12 @@ pub struct MaverickIndexer {
     client: reqwest::Client,
 }
 
+impl Default for MaverickIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MaverickIndexer {
     pub fn new() -> Self {
         Self {

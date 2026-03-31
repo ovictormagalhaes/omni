@@ -38,6 +38,12 @@ struct MeteoraPair {
     reward_apr: Option<f64>,
 }
 
+impl Default for MeteoraIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MeteoraIndexer {
     pub fn new() -> Self {
         Self {

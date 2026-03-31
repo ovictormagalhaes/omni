@@ -39,6 +39,12 @@ pub struct LidoIndexer {
     client: reqwest::Client,
 }
 
+impl Default for LidoIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LidoIndexer {
     pub fn new() -> Self {
         Self {
@@ -85,55 +91,54 @@ impl LidoIndexer {
             _ => 9_000_000_000, // fallback
         };
 
-        let mut rates = Vec::new();
-
-        // stETH
-        rates.push(ProtocolRate {
-            protocol: Protocol::Lido,
-            chain: Chain::Ethereum,
-            asset: Asset::from_symbol("STETH", "Lido"),
-            action: Action::Supply,
-            supply_apy: apy,
-            borrow_apr: 0.0,
-            rewards: 0.0,
-            performance_fee: Some(0.10), // Lido takes 10% fee
-            active: true,
-            collateral_enabled: false,
-            collateral_ltv: 0.0,
-            available_liquidity: tvl,
-            total_liquidity: tvl,
-            utilization_rate: 100.0,
-            ltv: 0.0,
-            operation_type: OperationType::Staking,
-            vault_id: Some("steth".to_string()),
-            vault_name: Some("Lido Staked ETH".to_string()),
-            underlying_asset: None,
-            timestamp: Utc::now(),
-        });
-
-        // wstETH (same APY)
-        rates.push(ProtocolRate {
-            protocol: Protocol::Lido,
-            chain: Chain::Ethereum,
-            asset: Asset::from_symbol("WSTETH", "Lido"),
-            action: Action::Supply,
-            supply_apy: apy,
-            borrow_apr: 0.0,
-            rewards: 0.0,
-            performance_fee: Some(0.10),
-            active: true,
-            collateral_enabled: false,
-            collateral_ltv: 0.0,
-            available_liquidity: tvl,
-            total_liquidity: tvl,
-            utilization_rate: 100.0,
-            ltv: 0.0,
-            operation_type: OperationType::Staking,
-            vault_id: Some("wsteth".to_string()),
-            vault_name: Some("Wrapped Lido Staked ETH".to_string()),
-            underlying_asset: None,
-            timestamp: Utc::now(),
-        });
+        let rates = vec![
+            // stETH
+            ProtocolRate {
+                protocol: Protocol::Lido,
+                chain: Chain::Ethereum,
+                asset: Asset::from_symbol("STETH", "Lido"),
+                action: Action::Supply,
+                supply_apy: apy,
+                borrow_apr: 0.0,
+                rewards: 0.0,
+                performance_fee: Some(0.10), // Lido takes 10% fee
+                active: true,
+                collateral_enabled: false,
+                collateral_ltv: 0.0,
+                available_liquidity: tvl,
+                total_liquidity: tvl,
+                utilization_rate: 100.0,
+                ltv: 0.0,
+                operation_type: OperationType::Staking,
+                vault_id: Some("steth".to_string()),
+                vault_name: Some("Lido Staked ETH".to_string()),
+                underlying_asset: None,
+                timestamp: Utc::now(),
+            },
+            // wstETH (same APY)
+            ProtocolRate {
+                protocol: Protocol::Lido,
+                chain: Chain::Ethereum,
+                asset: Asset::from_symbol("WSTETH", "Lido"),
+                action: Action::Supply,
+                supply_apy: apy,
+                borrow_apr: 0.0,
+                rewards: 0.0,
+                performance_fee: Some(0.10),
+                active: true,
+                collateral_enabled: false,
+                collateral_ltv: 0.0,
+                available_liquidity: tvl,
+                total_liquidity: tvl,
+                utilization_rate: 100.0,
+                ltv: 0.0,
+                operation_type: OperationType::Staking,
+                vault_id: Some("wsteth".to_string()),
+                vault_name: Some("Wrapped Lido Staked ETH".to_string()),
+                underlying_asset: None,
+                timestamp: Utc::now(),
+            },
+        ];
 
         tracing::info!("[Lido] APY: {:.2}%, TVL: ${}", apy * 100.0, tvl);
         Ok(rates)

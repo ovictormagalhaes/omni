@@ -54,6 +54,12 @@ pub struct YearnIndexer {
     client: reqwest::Client,
 }
 
+impl Default for YearnIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl YearnIndexer {
     pub fn new() -> Self {
         Self {

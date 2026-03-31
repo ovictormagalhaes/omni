@@ -43,6 +43,7 @@ export interface RateResponse {
 
 export interface SearchRatesParams {
   action: 'supply' | 'borrow'
+  assets?: string
   chains?: string
   protocols?: string
   operation_types?: string

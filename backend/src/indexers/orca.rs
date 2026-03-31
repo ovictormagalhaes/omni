@@ -61,6 +61,12 @@ pub struct OrcaIndexer {
     client: reqwest::Client,
 }
 
+impl Default for OrcaIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OrcaIndexer {
     pub fn new() -> Self {
         Self {

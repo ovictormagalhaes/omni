@@ -105,6 +105,12 @@ pub struct BalancerIndexer {
     client: reqwest::Client,
 }
 
+impl Default for BalancerIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BalancerIndexer {
     pub fn new() -> Self {
         Self {
@@ -118,7 +124,7 @@ impl BalancerIndexer {
     pub async fn fetch_pools(&self) -> Result<Vec<PoolRate>> {
         tracing::info!("[Balancer] Fetching pools from Balancer GraphQL API");
 
-        let chains = vec![
+        let chains = [
             (Chain::Ethereum, "MAINNET"),
             (Chain::Arbitrum, "ARBITRUM"),
             (Chain::Base, "BASE"),
@@ -350,8 +356,8 @@ fn clean_token_symbol(symbol: &str) -> String {
         // Try to extract the underlying token (last part after chain prefix)
         let known_prefixes = ["WAETH", "WAARB", "WABASE", "WAPOL", "WAOPT", "WAAVAX"];
         for prefix in known_prefixes {
-            if s.starts_with(prefix) {
-                return s[prefix.len()..].to_string();
+            if let Some(stripped) = s.strip_prefix(prefix) {
+                return stripped.to_string();
             }
         }
     }

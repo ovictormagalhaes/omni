@@ -19,6 +19,12 @@ pub struct StargateIndexer {
     pub defillama_cache: Option<DefiLlamaCache>,
 }
 
+impl Default for StargateIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StargateIndexer {
     pub fn new() -> Self {
         Self {

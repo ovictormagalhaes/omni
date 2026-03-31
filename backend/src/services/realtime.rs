@@ -247,8 +247,7 @@ impl RealtimeService {
             // No data in period, use the most recent snapshot before the period
             return snapshots
                 .iter()
-                .filter(|s| s.date < period_start)
-                .last()
+                .rfind(|s| s.date < period_start)
                 .map(|s| s.net_apy)
                 .unwrap_or(0.0);
         }
@@ -439,7 +438,7 @@ impl RealtimeService {
                         asset: asset_str.to_string(),
                         vault_name: None,
                         url: String::new(),
-                        operation_type: operation_type.clone(),
+                        operation_type,
                         action: action.clone(),
                         base_apy: 0.0,
                         rewards_apy: 0.0,
@@ -458,8 +457,7 @@ impl RealtimeService {
             let pre_90d_fallback: Option<RateSnapshot> = all_apys
                 .iter()
                 .zip(all_dates.iter())
-                .filter(|(_, d)| d.timestamp_millis() < start_90d_millis)
-                .next() // already sorted desc, so first is most recent before window
+                .find(|(_, d)| d.timestamp_millis() < start_90d_millis) // already sorted desc, so first is most recent before window
                 .map(|(&apy, d)| {
                     let date = DateTime::from_timestamp_millis(d.timestamp_millis()).unwrap_or(now);
                     RateSnapshot {
@@ -470,7 +468,7 @@ impl RealtimeService {
                         asset: asset_str.to_string(),
                         vault_name: None,
                         url: String::new(),
-                        operation_type: operation_type.clone(),
+                        operation_type,
                         action: action.clone(),
                         base_apy: 0.0,
                         rewards_apy: 0.0,
@@ -943,11 +941,12 @@ mod tests {
             create_test_snapshot(5, 0.50, now),
         ];
 
-        // For 30 days: 25 days at 10% + 5 days at 50% = (25*0.10 + 5*0.50) / 30 = 0.1667
+        // For 30 days: only the 5-day-ago snapshot is within the period,
+        // so we get 5 days at 50% → average = 0.50
         let avg_30d = RealtimeService::calculate_time_weighted_apy(&snapshots, 30, now);
         assert!(
-            (avg_30d - 0.1667).abs() < 0.01,
-            "Expected ~0.1667, got {}",
+            (avg_30d - 0.50).abs() < 0.01,
+            "Expected ~0.50, got {}",
             avg_30d
         );
 
@@ -995,11 +994,12 @@ mod tests {
             avg_7d
         );
 
-        // For 30 days: 23 days at 10% + 7 days at 60% = (23*0.10 + 7*0.60) / 30 = 0.2167
+        // For 30 days: only the 7-day-ago snapshot is within the period,
+        // so we get 7 days at 60% → average = 0.60
         let avg_30d = RealtimeService::calculate_time_weighted_apy(&snapshots, 30, now);
         assert!(
-            (avg_30d - 0.2167).abs() < 0.01,
-            "Expected ~0.2167, got {}",
+            (avg_30d - 0.60).abs() < 0.01,
+            "Expected ~0.60, got {}",
             avg_30d
         );
 

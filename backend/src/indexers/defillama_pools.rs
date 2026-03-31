@@ -89,7 +89,7 @@ impl DefiLlamaCache {
             .filter(|p| {
                 p.project
                     .as_deref()
-                    .map(|proj| projects.iter().any(|target| proj == *target))
+                    .map(|proj| projects.contains(&proj))
                     .unwrap_or(false)
             })
             .cloned()
@@ -143,9 +143,12 @@ pub fn parse_symbol(symbol: &str) -> (String, String) {
 
 /// Determine pool type from symbol or metadata
 pub fn infer_pool_type(symbol: &str, project: &str) -> PoolType {
-    if project.contains("slipstream") || project.contains("v3") || project.contains("cl") {
-        PoolType::ConcentratedLiquidity
-    } else if symbol.contains("CL-") || symbol.contains("vAMM") {
+    if project.contains("slipstream")
+        || project.contains("v3")
+        || project.contains("cl")
+        || symbol.contains("CL-")
+        || symbol.contains("vAMM")
+    {
         PoolType::ConcentratedLiquidity
     } else {
         PoolType::Standard

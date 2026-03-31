@@ -21,6 +21,12 @@ pub struct ConvexIndexer {
     pub defillama_cache: Option<DefiLlamaCache>,
 }
 
+impl Default for ConvexIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConvexIndexer {
     pub fn new() -> Self {
         Self {

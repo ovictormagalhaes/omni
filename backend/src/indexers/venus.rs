@@ -52,6 +52,12 @@ pub struct VenusIndexer {
     client: reqwest::Client,
 }
 
+impl Default for VenusIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VenusIndexer {
     pub fn new() -> Self {
         Self {

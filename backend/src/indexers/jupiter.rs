@@ -35,6 +35,12 @@ pub struct JupiterIndexer {
     client: reqwest::Client,
 }
 
+impl Default for JupiterIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JupiterIndexer {
     pub fn new() -> Self {
         Self {
@@ -81,7 +87,7 @@ impl JupiterIndexer {
             // API returns decimal (e.g. 0.0619 = 6.19%)
             let apy = apy_decimal * 100.0;
 
-            if apy > 100.0 || apy < 0.0 {
+            if !(0.0..=100.0).contains(&apy) {
                 tracing::warn!("[Jupiter] Suspicious JupSOL APY: {:.4}%, skipping", apy);
                 return Ok(vec![]);
             }

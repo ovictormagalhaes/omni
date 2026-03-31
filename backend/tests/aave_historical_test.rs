@@ -81,7 +81,7 @@ async fn test_aave_base_usdc_has_historical_data() -> Result<()> {
     println!("USDC Address: {}", usdc_address);
     println!("Subgraph URL: {}", url);
     println!("Query period: Last 30 days");
-    println!("");
+    println!();
 
     let client = reqwest::Client::new();
     let response = client

@@ -21,6 +21,12 @@ pub struct CompoundIndexer {
     pub defillama_cache: Option<DefiLlamaCache>,
 }
 
+impl Default for CompoundIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CompoundIndexer {
     pub fn new() -> Self {
         Self {
@@ -164,10 +170,7 @@ impl RateIndexer for CompoundIndexer {
 
 fn normalize_symbol(symbol: &str) -> String {
     let s = symbol.to_uppercase();
-    s.split(|c: char| c == '-' || c == '/' || c == ' ')
-        .next()
-        .unwrap_or(&s)
-        .to_string()
+    s.split(['-', '/', ' ']).next().unwrap_or(&s).to_string()
 }
 
 #[cfg(test)]

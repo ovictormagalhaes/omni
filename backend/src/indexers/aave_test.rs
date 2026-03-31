@@ -10,7 +10,7 @@ mod tests {
         // Test with underlying asset (specific reserve URL)
         assert_eq!(
             indexer.get_protocol_url(&Chain::Arbitrum, Some("0xaf88d065e77c8cC2239327C5EDb3A432268e5831")),
-            "https://app.aave.com/reserve-overview/?underlyingAsset=0xaf88d065e77c8cC2239327C5EDb3A432268e5831&marketName=proto_arbitrum_v3"
+            "https://app.aave.com/reserve-overview/?underlyingAsset=0xaf88d065e77c8cc2239327c5edb3a432268e5831&marketName=proto_arbitrum_v3"
         );
 
         // Test without underlying asset (generic market URL)

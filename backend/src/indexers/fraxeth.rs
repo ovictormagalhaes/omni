@@ -39,6 +39,12 @@ pub struct FraxEthIndexer {
     pub client: reqwest::Client,
 }
 
+impl Default for FraxEthIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FraxEthIndexer {
     pub fn new() -> Self {
         Self {
@@ -84,7 +90,7 @@ impl FraxEthIndexer {
         let eth_price_approx = 2000.0;
         let tvl_usd = total_assets_eth * eth_price_approx;
 
-        if apr > 1000.0 || apr < 0.0 {
+        if !(0.0..=1000.0).contains(&apr) {
             tracing::warn!("[FraxETH] Suspicious APR: {:.4}%, skipping", apr);
             return Ok(vec![]);
         }

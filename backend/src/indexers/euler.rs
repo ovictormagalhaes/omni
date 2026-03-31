@@ -75,6 +75,12 @@ pub struct EulerIndexer {
     graphql_url: String,
 }
 
+impl Default for EulerIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EulerIndexer {
     pub fn new() -> Self {
         Self {

@@ -472,7 +472,7 @@ impl HistoricalDataService {
         for snapshot in &snapshots {
             protocol_rates
                 .entry(format!("{:?}", snapshot.protocol))
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(snapshot.net_apy);
         }
 
@@ -722,7 +722,7 @@ impl HistoricalDataService {
                 meta_protocol = Some(snapshot.protocol.clone());
                 meta_chain = Some(snapshot.chain.clone());
                 meta_asset = Some(snapshot.asset.clone());
-                meta_op_type = Some(snapshot.operation_type.clone());
+                meta_op_type = Some(snapshot.operation_type);
                 meta_url = Some(snapshot.url.clone());
 
                 raw_points.push(VaultHistoryPoint {

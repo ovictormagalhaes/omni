@@ -94,6 +94,12 @@ struct VolumePool {
 
 // ── Implementation ───────────────────────────────────────────────────
 
+impl Default for CurveIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CurveIndexer {
     pub fn new() -> Self {
         Self {

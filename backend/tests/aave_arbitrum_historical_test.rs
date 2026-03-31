@@ -71,7 +71,7 @@ async fn test_aave_arbitrum_usdc_has_historical_data() -> Result<()> {
     println!("================================================");
     println!("USDC Address: {}", usdc_address);
     println!("Subgraph URL: {}", url);
-    println!("");
+    println!();
 
     let client = reqwest::Client::new();
     let response = client

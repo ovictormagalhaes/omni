@@ -67,8 +67,8 @@ pub async fn score_pool(
 
         // Log available pools for this protocol+chain
         for p in comparable.iter().filter(|p| {
-            req.protocol.as_ref().map_or(false, |rp| p.protocol == *rp)
-                && req.chain.as_ref().map_or(false, |rc| p.chain == *rc)
+            req.protocol.as_ref().is_some_and(|rp| p.protocol == *rp)
+                && req.chain.as_ref().is_some_and(|rc| p.chain == *rc)
         }) {
             tracing::info!(
                 "  candidate: {}/{} fee={} apr={:.2}",
@@ -80,9 +80,9 @@ pub async fn score_pool(
         }
 
         comparable.iter().position(|p| {
-            let protocol_match = req.protocol.as_ref().map_or(true, |rp| p.protocol == *rp);
-            let chain_match = req.chain.as_ref().map_or(true, |rc| p.chain == *rc);
-            let fee_match = req.fee_tier.map_or(true, |bps| p.fee_rate_bps == bps);
+            let protocol_match = req.protocol.as_ref().is_none_or(|rp| p.protocol == *rp);
+            let chain_match = req.chain.as_ref().is_none_or(|rc| p.chain == *rc);
+            let fee_match = req.fee_tier.is_none_or(|bps| p.fee_rate_bps == bps);
 
             // Match tokens: exact symbol first, then category fallback (either order)
             let pt0 = p.token0.to_uppercase();

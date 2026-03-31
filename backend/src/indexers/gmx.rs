@@ -63,6 +63,12 @@ pub struct GmxIndexer {
     pub client: reqwest::Client,
 }
 
+impl Default for GmxIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GmxIndexer {
     pub fn new() -> Self {
         Self {
@@ -181,7 +187,7 @@ impl GmxIndexer {
             let base_apy = data.base_apy.or(data.apy).unwrap_or(0.0) * 100.0;
             let bonus = data.bonus_apr.unwrap_or(0.0) * 100.0;
 
-            if base_apy > 10000.0 || base_apy < -100.0 {
+            if !(-100.0..=10000.0).contains(&base_apy) {
                 continue;
             }
 

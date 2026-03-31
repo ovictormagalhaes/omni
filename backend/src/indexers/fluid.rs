@@ -204,7 +204,7 @@ impl FluidIndexer {
                 chain: Chain::Ethereum,
                 asset: asset.clone(),
                 action: crate::models::Action::Supply,
-                supply_apy: supply_apy,
+                supply_apy,
                 borrow_apr: 0.0,
                 rewards: rewards_apy,
                 performance_fee: None,
