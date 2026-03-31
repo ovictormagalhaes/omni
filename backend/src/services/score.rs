@@ -512,22 +512,23 @@ pub async fn score_lending(
         });
     }
 
-    let (user_proto_str, user_chain_str) = if req.protocol.is_some() && req.chain.is_some() {
-        (
-            serde_json::to_value(req.protocol.as_ref().unwrap())
-                .unwrap_or_default()
-                .as_str()
-                .unwrap_or("")
-                .to_string(),
-            serde_json::to_value(req.chain.as_ref().unwrap())
-                .unwrap_or_default()
-                .as_str()
-                .unwrap_or("")
-                .to_string(),
-        )
-    } else {
-        (String::new(), String::new())
-    };
+    let (user_proto_str, user_chain_str) =
+        if let (Some(proto), Some(chain)) = (&req.protocol, &req.chain) {
+            (
+                serde_json::to_value(proto)
+                    .unwrap_or_default()
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string(),
+                serde_json::to_value(chain)
+                    .unwrap_or_default()
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        } else {
+            (String::new(), String::new())
+        };
 
     let user_idx = find_user_idx(&suggestions, &user_proto_str, &user_chain_str);
 
