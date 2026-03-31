@@ -1,0 +1,55 @@
+name: Worker (daily collection)
+
+on:
+  schedule:
+    # Every 6 hours: 03:00, 09:00, 15:00, 21:00 UTC
+    # First run of the day (03:00) does full collection + backfill.
+    # Subsequent runs only consolidate/update (idempotent via has_successful_execution_for_today).
+    - cron: "0 3,9,15,21 * * *"
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Worker command"
+        required: false
+        default: "collect"
+        type: choice
+        options:
+          - collect
+          - "collect --backfill-only"
+          - reset
+
+jobs:
+  run-worker:
+    name: Collect rates
+    runs-on: ubuntu-latest
+    environment: Worker
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+          # Cache the release build to speed up subsequent runs
+          cache-targets: true
+
+      - name: Build worker
+        run: cargo build --manifest-path backend/Cargo.toml --release --bin omni-worker
+
+      - name: Run worker
+        run: ./backend/target/release/omni-worker ${{ github.event.inputs.command || 'collect' }}
+        env:
+          RUST_LOG: info,omni_backend=debug
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          MONGODB_URL: ${{ secrets.MONGODB_URL }}
+          MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
+          BACKFILL_DAYS: ${{ vars.BACKFILL_DAYS || '30' }}
+          AAVE_SUBGRAPH_ARBITRUM: https://api.thegraph.com/subgraphs/name/aave/protocol-v3-arbitrum
+          AAVE_SUBGRAPH_BASE: https://api.thegraph.com/subgraphs/name/aave/protocol-v3-base
+          KAMINO_API_URL: https://api.hubbleprotocol.io/v2/kamino-market
+          MORPHO_API_URL: https://api.morpho.org/graphql
+          FLUID_API_URL: https://api.fluid.instadapp.io
+          TRONGRID_API_KEY: ${{ secrets.TRONGRID_API_KEY }}
+          THE_GRAPH_API_KEY: ${{ secrets.THE_GRAPH_API_KEY }}

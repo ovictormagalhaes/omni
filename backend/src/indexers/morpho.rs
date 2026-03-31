@@ -1,8 +1,10 @@
-use crate::models::{Asset, Chain, Protocol};
+use crate::models::{Asset, Chain, Protocol, ProtocolRate};
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use super::RateIndexer;
 
 // GraphQL response for vaults query
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,21 +59,25 @@ struct VaultState {
 }
 
 // Legacy Markets support (kept for reference, not used)
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct GraphQLResponse {
     data: Option<MarketsData>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct MarketsData {
     markets: MarketsResult,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct MarketsResult {
     items: Vec<Market>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Market {
@@ -81,12 +87,14 @@ struct Market {
     state: MarketState,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct TokenInfo {
     symbol: String,
     address: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MarketState {
@@ -106,6 +114,7 @@ struct MarketState {
     rewards: Option<Vec<Reward>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Reward {
@@ -116,6 +125,7 @@ struct Reward {
     asset: RewardAsset,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct RewardAsset {
     symbol: String,
@@ -191,7 +201,10 @@ pub struct MorphoIndexer {
 impl MorphoIndexer {
     pub fn new(api_url: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             api_url,
         }
     }
@@ -356,12 +369,34 @@ impl MorphoIndexer {
             Chain::Optimism => "optimism",
             _ => "ethereum",
         };
-        
+
         if let Some(id) = vault_id {
             format!("https://app.morpho.org/{}/vault/{}", network, id)
         } else {
             format!("https://app.morpho.org/{}/earn", network)
         }
+    }
+}
+
+#[async_trait]
+impl RateIndexer for MorphoIndexer {
+    fn protocol(&self) -> Protocol {
+        Protocol::Morpho
+    }
+
+    fn supported_chains(&self) -> Vec<Chain> {
+        vec![Chain::Ethereum]
+    }
+
+    async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
+        if !self.supported_chains().contains(chain) {
+            return Ok(vec![]);
+        }
+        self.fetch_rates().await
+    }
+
+    fn rate_url(&self, rate: &ProtocolRate) -> String {
+        self.get_protocol_url(&rate.chain, rate.vault_id.as_deref())
     }
 }
 

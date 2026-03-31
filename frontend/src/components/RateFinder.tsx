@@ -1,28 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Search, TrendingUp, TrendingDown, ChevronDown, BarChart2, SlidersHorizontal, Info } from 'lucide-react'
 import { searchRates, RateResult } from '../lib/api'
 import { ProtocolIcon } from './ProtocolIcon'
 import { ChainIcon } from './ChainIcon'
 import VaultDetailDrawer from './VaultDetailDrawer'
+import AssetCategoryFilter, { type AssetCategory } from './AssetCategoryFilter'
 
 type Action = 'supply' | 'borrow'
 type Chain = 'ethereum' | 'solana' | 'bsc' | 'bitcoin' | 'tron' | 'base' | 'arbitrum' | 'polygon' | 'optimism' | 'avalanche' | 'sui' | 'hyperliquid' | 'scroll' | 'mantle' | 'linea' | 'blast' | 'fantom' | 'zksync' | 'aptos' | 'celo'
-type Protocol = 'aave' | 'kamino' | 'morpho' | 'fluid' | 'sparklend' | 'justlend' | 'euler' | 'jupiter' | 'lido' | 'marinade' | 'jito' | 'rocketpool'
+type Protocol = 'aave' | 'kamino' | 'morpho' | 'fluid' | 'sparklend' | 'justlend' | 'euler' | 'jupiter' | 'lido' | 'marinade' | 'jito' | 'rocketpool' | 'compound' | 'venus' | 'pendle' | 'ethena' | 'etherfi' | 'benqi' | 'radiant' | 'silo' | 'sky' | 'fraxeth' | 'aura' | 'convex' | 'yearn' | 'stargate' | 'gmx'
 type OperationType = 'lending' | 'vault' | 'staking'
-type AssetCategory = 'usd-correlated' | 'stablecoin' | 'btc-correlated' | 'eth-correlated' | 'sol-correlated' | 'other'
 
-const OPERATION_TYPES: { value: OperationType; label: string }[] = [
-  { value: 'lending', label: 'Lending' },
-  { value: 'vault', label: 'Vault' },
-  { value: 'staking', label: 'Staking' },
-]
-const ASSET_CATEGORIES: { value: AssetCategory; label: string; description: string }[] = [
-  { value: 'usd-correlated', label: 'USD', description: 'Assets pegged or correlated to the US Dollar, including tokenized treasuries and yield-bearing USD products (e.g. USDC, USDT, sDAI)' },
-  { value: 'stablecoin', label: 'Stablecoin', description: 'Traditional stablecoins that maintain a 1:1 peg to fiat currencies (e.g. USDC, USDT, DAI)' },
-  { value: 'btc-correlated', label: 'BTC', description: 'Bitcoin and wrapped/synthetic Bitcoin assets that track BTC price (e.g. WBTC, tBTC, cbBTC)' },
-  { value: 'eth-correlated', label: 'ETH', description: 'Ether and liquid staking derivatives that track ETH price (e.g. ETH, wstETH, rETH, cbETH)' },
-  { value: 'sol-correlated', label: 'SOL', description: 'Solana and liquid staking tokens that track SOL price (e.g. SOL, mSOL, jitoSOL, bSOL)' },
-  { value: 'other', label: 'Other', description: 'Assets that don\'t fit into the above categories, including altcoins, governance tokens, and other DeFi tokens' },
+const OPERATION_TYPES: { value: OperationType; label: string; description: string }[] = [
+  { value: 'lending', label: 'Lending', description: 'Traditional lending/borrowing protocols where you supply assets to earn interest or borrow against collateral (e.g. Aave, Kamino Lend, Morpho)' },
+  { value: 'vault', label: 'Vault', description: 'Automated yield strategies that deposit into optimized vaults for enhanced returns (e.g. Morpho Vaults, Euler Vaults)' },
+  { value: 'staking', label: 'Staking', description: 'Liquid staking protocols that let you stake native tokens while maintaining liquidity (e.g. Lido, Jito, Marinade, Rocket Pool)' },
 ]
 const CHAINS: { value: Chain; label: string }[] = [
   { value: 'aptos', label: 'Aptos' },
@@ -59,6 +51,21 @@ const PROTOCOLS: { value: Protocol; label: string }[] = [
   { value: 'morpho', label: 'Morpho' },
   { value: 'rocketpool', label: 'Rocket Pool' },
   { value: 'sparklend', label: 'SparkLend' },
+  { value: 'compound', label: 'Compound V3' },
+  { value: 'ethena', label: 'Ethena' },
+  { value: 'etherfi', label: 'EtherFi' },
+  { value: 'pendle', label: 'Pendle' },
+  { value: 'venus', label: 'Venus' },
+  { value: 'benqi', label: 'Benqi' },
+  { value: 'radiant', label: 'Radiant' },
+  { value: 'silo', label: 'Silo' },
+  { value: 'sky', label: 'Sky (Maker)' },
+  { value: 'fraxeth', label: 'Frax ETH' },
+  { value: 'aura', label: 'Aura' },
+  { value: 'convex', label: 'Convex' },
+  { value: 'yearn', label: 'Yearn' },
+  { value: 'stargate', label: 'Stargate' },
+  { value: 'gmx', label: 'GMX' },
 ]
 
 export default function RateFinder() {
@@ -66,16 +73,31 @@ export default function RateFinder() {
   const [selectedChains, setSelectedChains] = useState<Chain[]>(CHAINS.map(c => c.value))
   const [selectedProtocols, setSelectedProtocols] = useState<Protocol[]>(PROTOCOLS.map(p => p.value))
   const [selectedOperationTypes, setSelectedOperationTypes] = useState<OperationType[]>(['lending', 'vault', 'staking'])
+  const [tokenFilterMode, setTokenFilterMode] = useState<'category' | 'name'>('category')
   const [selectedAssetCategory, setSelectedAssetCategory] = useState<AssetCategory | null>(null)
   const [searchToken, setSearchToken] = useState<string>('')
   const [minLiquidity, setMinLiquidity] = useState<number>(1000000)
   const [results, setResults] = useState<RateResult[]>([])
-  const [visibleCount, setVisibleCount] = useState<number>(9)
   const [loading, setLoading] = useState(false)
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const PAGE_SIZE = 20
   const [error, setError] = useState<string | null>(null)
   const [isChainDropdownOpen, setIsChainDropdownOpen] = useState(false)
   const [isProtocolDropdownOpen, setIsProtocolDropdownOpen] = useState(false)
   const [selectedVault, setSelectedVault] = useState<RateResult | null>(null)
+  const chainDropdownRef = useRef<HTMLDivElement>(null)
+  const protocolDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (chainDropdownRef.current && !chainDropdownRef.current.contains(e.target as Node)) setIsChainDropdownOpen(false)
+      if (protocolDropdownRef.current && !protocolDropdownRef.current.contains(e.target as Node)) setIsProtocolDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const toggleChain = (chain: Chain) => {
     setSelectedChains(prev => prev.includes(chain) ? prev.filter(c => c !== chain) : [...prev, chain])
@@ -119,30 +141,51 @@ export default function RateFinder() {
     return `${selectedProtocols.length} protocols selected`
   }
 
+  const buildParams = (targetPage: number) => ({
+    action,
+    chains: selectedChains.length > 0 && selectedChains.length < CHAINS.length
+      ? selectedChains.join(',')
+      : undefined,
+    protocols: selectedProtocols.length > 0 && selectedProtocols.length < PROTOCOLS.length
+      ? selectedProtocols.join(',')
+      : undefined,
+    operation_types: selectedOperationTypes.length > 0 ? selectedOperationTypes.join(',') : undefined,
+    asset_categories: selectedAssetCategory || undefined,
+    token: searchToken.trim() || undefined,
+    min_liquidity: minLiquidity,
+    page: targetPage,
+    page_size: PAGE_SIZE,
+  })
+
   const handleSearch = async () => {
     setLoading(true)
     setError(null)
-    setVisibleCount(9)
     setIsChainDropdownOpen(false)
     setIsProtocolDropdownOpen(false)
 
     try {
-      const data = await searchRates({
-        action,
-        chains: selectedChains.length > 0 && selectedChains.length < CHAINS.length
-          ? selectedChains.join(',')
-          : undefined,
-        protocols: selectedProtocols.length > 0 && selectedProtocols.length < PROTOCOLS.length
-          ? selectedProtocols.join(',')
-          : undefined,
-        operation_types: selectedOperationTypes.length > 0 ? selectedOperationTypes.join(',') : undefined,
-        asset_categories: selectedAssetCategory || undefined,
-        min_liquidity: minLiquidity,
-      })
-
+      const data = await searchRates(buildParams(1))
       setResults(data.results)
+      setPage(1)
+      setTotalCount(data.totalCount)
+      setHasMore(data.page < data.totalPages)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch rates')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleLoadMore = async () => {
+    const nextPage = page + 1
+    setLoading(true)
+    try {
+      const data = await searchRates(buildParams(nextPage))
+      setResults(prev => [...prev, ...data.results])
+      setPage(nextPage)
+      setHasMore(data.page < data.totalPages)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load more')
     } finally {
       setLoading(false)
     }
@@ -163,7 +206,7 @@ export default function RateFinder() {
             <SlidersHorizontal className="w-5 h-5 text-omni-blue-light" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Find Best Rates</h2>
+            <h2 className="text-xl font-bold text-white">Earn Finder</h2>
             <p className="text-xs text-slate-500">Configure filters and search across DeFi</p>
           </div>
         </div>
@@ -198,9 +241,9 @@ export default function RateFinder() {
         </div>
 
         {/* Filters grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
           {/* Chain Filters */}
-          <div className="relative">
+          <div className="relative" ref={chainDropdownRef}>
             <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Chains</label>
             <button
               onClick={() => setIsChainDropdownOpen(!isChainDropdownOpen)}
@@ -244,7 +287,7 @@ export default function RateFinder() {
           </div>
 
           {/* Protocol Filters */}
-          <div className="relative">
+          <div className="relative" ref={protocolDropdownRef}>
             <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Protocols</label>
             <button
               onClick={() => setIsProtocolDropdownOpen(!isProtocolDropdownOpen)}
@@ -273,65 +316,85 @@ export default function RateFinder() {
           </div>
         </div>
 
+        {/* Quick picks */}
+        <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700/30 mb-5">
+          <span className="text-xs text-slate-500 self-center mr-1">Quick:</span>
+          {[
+            { label: 'Ethereum Only', chains: ['ethereum'] as Chain[] },
+            { label: 'Solana Only', chains: ['solana'] as Chain[] },
+            { label: 'EVM Chains', chains: ['ethereum', 'arbitrum', 'base', 'polygon', 'optimism'] as Chain[] },
+            { label: 'All Chains', chains: CHAINS.map(c => c.value) },
+          ].map(q => (
+            <button key={q.label} onClick={() => { setSelectedChains(q.chains); setSelectedProtocols(PROTOCOLS.map(p => p.value)) }}
+              className="px-3 py-1 text-xs font-medium bg-slate-800/60 text-slate-400 border border-slate-700/30 rounded-lg hover:text-white hover:border-slate-600 transition-colors"
+            >{q.label}</button>
+          ))}
+        </div>
+
         {/* Operation Type + Category */}
         <div className="space-y-4 mb-5">
           <div>
             <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Operation Type</label>
             <div className="flex flex-wrap gap-2">
               {OPERATION_TYPES.map((opType) => (
-                <button
-                  key={opType.value}
-                  onClick={() => toggleOperationType(opType.value)}
-                  className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    selectedOperationTypes.includes(opType.value)
-                      ? 'bg-omni-blue/15 text-omni-blue-light border border-omni-blue/30'
-                      : 'bg-slate-800/60 text-slate-500 border border-slate-700/30 hover:text-slate-300 hover:border-slate-600'
-                  }`}
-                >
-                  {opType.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Asset Category</label>
-            <div className="flex flex-wrap gap-2">
-              {ASSET_CATEGORIES.map((category) => (
-                <div key={category.value} className="relative group/tooltip">
+                <div key={opType.value} className="relative group/tooltip">
                   <button
-                    onClick={() => setSelectedAssetCategory(
-                      selectedAssetCategory === category.value ? null : category.value
-                    )}
+                    onClick={() => toggleOperationType(opType.value)}
                     className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      selectedAssetCategory === category.value
-                        ? 'bg-omni-gold/15 text-omni-gold-light border border-omni-gold/30'
+                      selectedOperationTypes.includes(opType.value)
+                        ? 'bg-omni-blue/15 text-omni-blue-light border border-omni-blue/30'
                         : 'bg-slate-800/60 text-slate-500 border border-slate-700/30 hover:text-slate-300 hover:border-slate-600'
                     }`}
                   >
-                    {category.label}
+                    {opType.label}
                     <Info className="w-3 h-3 opacity-40 group-hover/tooltip:opacity-70 transition-opacity" />
                   </button>
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300 w-56 opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
-                    {category.description}
+                    {opType.description}
                     <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45" />
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
 
-        {/* Token Search */}
-        <div className="mb-5">
-          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Search Token</label>
-          <input
-            type="text"
-            value={searchToken}
-            onChange={(e) => setSearchToken(e.target.value)}
-            placeholder="e.g. USDC, ETH, BTC..."
-            className="input-field text-sm"
-          />
+          {/* Token Filter Mode Toggle */}
+          <div>
+            <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Filter Asset By</label>
+            <div className="flex rounded-lg overflow-hidden border border-slate-700/30 w-fit">
+              <button
+                onClick={() => { setTokenFilterMode('category'); setSearchToken('') }}
+                className={`px-4 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  tokenFilterMode === 'category'
+                    ? 'bg-omni-blue/15 text-omni-blue-light'
+                    : 'bg-slate-800/60 text-slate-500 hover:text-slate-300'
+                }`}
+              >Category</button>
+              <button
+                onClick={() => { setTokenFilterMode('name'); setSelectedAssetCategory(null) }}
+                className={`px-4 py-1.5 text-xs font-medium transition-all duration-200 ${
+                  tokenFilterMode === 'name'
+                    ? 'bg-omni-blue/15 text-omni-blue-light'
+                    : 'bg-slate-800/60 text-slate-500 hover:text-slate-300'
+                }`}
+              >Name</button>
+            </div>
+          </div>
+
+          {tokenFilterMode === 'category' ? (
+            <AssetCategoryFilter selected={selectedAssetCategory} onSelect={setSelectedAssetCategory} />
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Token Name</label>
+              <input
+                type="text"
+                value={searchToken}
+                onChange={(e) => setSearchToken(e.target.value)}
+                placeholder="e.g. USDC, ETH, BTC..."
+                className="input-field text-sm"
+              />
+            </div>
+          )}
         </div>
 
         {/* Search Button */}
@@ -351,7 +414,7 @@ export default function RateFinder() {
           ) : (
             <span className="flex items-center justify-center gap-2">
               <Search className="w-4 h-4" />
-              Search Rates
+              Search
             </span>
           )}
         </button>
@@ -364,25 +427,20 @@ export default function RateFinder() {
       </div>
 
       {/* Results */}
-      {results.length > 0 && (() => {
-        const filteredResults = searchToken
-          ? results.filter(r => r.asset.toLowerCase().includes(searchToken.toLowerCase()))
-          : results
-
-        return (
+      {results.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <BarChart2 className="w-5 h-5 text-omni-blue-light" />
-              Best {action === 'supply' ? 'Supply' : 'Borrow'} Rates
+              Best {action === 'supply' ? 'Supply' : 'Borrow'} Results
             </h3>
             <span className="text-xs text-slate-500 bg-slate-800/60 px-3 py-1 rounded-full">
-              {Math.min(visibleCount, filteredResults.length)} of {filteredResults.length}
+              {results.length} of {totalCount}
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredResults.slice(0, visibleCount).map((result, index) => {
+            {results.map((result, index) => {
               const category = Array.isArray(result.assetCategory)
                 ? (result.assetCategory.length > 0 ? result.assetCategory[0] : null)
                 : result.assetCategory
@@ -397,11 +455,18 @@ export default function RateFinder() {
                     <ProtocolIcon protocol={result.protocol} className="w-5 h-5" />
                     <span className="text-white font-semibold text-sm capitalize">{result.protocol}</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                      action === 'supply'
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                    }`}>
+                      {action === 'supply' ? 'Supply' : 'Borrow'}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                       result.operationType === 'vault'
                         ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
                         : result.operationType === 'staking'
                         ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
                     }`}>
                       {result.operationType === 'vault' ? 'Vault' : result.operationType === 'staking' ? 'Staking' : 'Lending'}
                     </span>
@@ -412,13 +477,9 @@ export default function RateFinder() {
                   </div>
                 </div>
 
-                {/* Vault Name */}
-                {result.vaultName && (
-                  <p className="text-[11px] text-slate-500 mb-2 truncate">{result.vaultName}</p>
-                )}
-
-                {/* Asset + Category */}
-                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-slate-700/30">
+                {/* Asset + Category + Vault Name */}
+                <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-700/30">
+                  <div className="flex items-center gap-2">
                   <span className="text-xl font-mono font-bold text-white">{result.asset}</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${
                     category === 'usd-correlated' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
@@ -435,6 +496,10 @@ export default function RateFinder() {
                       : category === 'sol-correlated' ? 'SOL'
                       : 'Other'}
                   </span>
+                  </div>
+                  {result.vaultName && (
+                    <span className="text-[11px] text-slate-500 truncate ml-2 max-w-[50%] text-right">{result.vaultName}</span>
+                  )}
                 </div>
 
                 {/* Stats */}
@@ -532,20 +597,21 @@ export default function RateFinder() {
             })}
           </div>
 
-          {visibleCount < filteredResults.length && (
+          {/* Load more */}
+          {hasMore && (
             <div className="mt-6 text-center">
               <button
-                onClick={() => setVisibleCount(prev => prev + 9)}
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 border border-slate-700/30 hover:border-slate-600 rounded-xl transition-all text-sm font-medium"
+                onClick={handleLoadMore}
+                disabled={loading}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 border border-slate-700/30 hover:border-slate-600 rounded-xl transition-all text-sm font-medium disabled:opacity-40"
               >
-                Load More
+                {loading ? 'Loading...' : `Load More (${totalCount - results.length} remaining)`}
                 <ChevronDown className="w-4 h-4" />
               </button>
             </div>
           )}
         </div>
-        )
-      })()}
+      )}
 
       <VaultDetailDrawer
         vault={selectedVault}

@@ -68,6 +68,7 @@ dotenvy = "0.15"
 # Numeric
 rust_decimal = "1.33"
 rust_decimal_macros = "1.33"
+async-trait = "0.1.89"
 
 [dev-dependencies]
 tokio-test = "0.4"

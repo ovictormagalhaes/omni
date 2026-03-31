@@ -16,6 +16,14 @@ pub struct Config {
     pub fluid_api_url: String,
     pub trongrid_api_key: Option<String>,
     pub the_graph_api_key: Option<String>,
+    pub raydium_api_url: String,
+    pub cors_origins: Vec<String>,
+    // Performance tuning
+    pub max_concurrent_indexers: usize,
+    pub backfill_concurrency: usize,
+    pub indexer_timeout_secs: u64,
+    pub cb_failure_threshold: u32,
+    pub cb_cooldown_secs: u64,
 }
 
 impl Config {
@@ -38,9 +46,9 @@ impl Config {
                 .unwrap_or_else(|_| "30".to_string())
                 .parse()?,
             aave_subgraph_arbitrum: std::env::var("AAVE_SUBGRAPH_ARBITRUM")
-                .unwrap_or_else(|_| "Ff2GgEFBKbhPEBBtq4bTCTbicBWmPuMqmpCTfBMvHBiS".to_string()),
+                .unwrap_or_else(|_| "https://api.thegraph.com/subgraphs/name/aave/protocol-v3-arbitrum".to_string()),
             aave_subgraph_base: std::env::var("AAVE_SUBGRAPH_BASE")
-                .unwrap_or_else(|_| "GQFbb95cE6d8mV989mL5figjaGaKCQB3xqYrr1bRyXqF".to_string()),
+                .unwrap_or_else(|_| "https://api.thegraph.com/subgraphs/name/aave/protocol-v3-base".to_string()),
             kamino_api_url: std::env::var("KAMINO_API_URL")
                 .unwrap_or_else(|_| "https://api.kamino.finance".to_string()),
             morpho_api_url: std::env::var("MORPHO_API_URL")
@@ -49,6 +57,30 @@ impl Config {
                 .unwrap_or_else(|_| "https://api.fluid.instadapp.io".to_string()),
             trongrid_api_key: std::env::var("TRONGRID_API_KEY").ok(),
             the_graph_api_key: std::env::var("THE_GRAPH_API_KEY").ok(),
+            raydium_api_url: std::env::var("RAYDIUM_API_URL")
+                .unwrap_or_else(|_| "https://api-v3.raydium.io".to_string()),
+            cors_origins: std::env::var("CORS_ORIGINS")
+                .unwrap_or_else(|_| "http://localhost:5173".to_string())
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            // Performance tuning
+            max_concurrent_indexers: std::env::var("MAX_CONCURRENT_INDEXERS")
+                .unwrap_or_else(|_| "50".to_string())
+                .parse()?,
+            backfill_concurrency: std::env::var("BACKFILL_CONCURRENCY")
+                .unwrap_or_else(|_| "25".to_string())
+                .parse()?,
+            indexer_timeout_secs: std::env::var("INDEXER_TIMEOUT_SECS")
+                .unwrap_or_else(|_| "45".to_string())
+                .parse()?,
+            cb_failure_threshold: std::env::var("CB_FAILURE_THRESHOLD")
+                .unwrap_or_else(|_| "3".to_string())
+                .parse()?,
+            cb_cooldown_secs: std::env::var("CB_COOLDOWN_SECS")
+                .unwrap_or_else(|_| "300".to_string())
+                .parse()?,
         })
     }
 }

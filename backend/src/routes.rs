@@ -3,13 +3,13 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
+    body::Bytes,
 };
 use chrono::Utc;
 use std::sync::Arc;
 
 use crate::{
     models::*,
-    services::aggregator::RateAggregator,
     AppState,
 };
 use crate::models::VaultHistoryResponse;
@@ -18,27 +18,18 @@ pub async fn get_rates(
     State(state): State<Arc<AppState>>,
     Query(query): Query<RateQuery>,
 ) -> Result<Json<RateResponse>, AppError> {
-    tracing::info!("Received rate query - action: {:?}, assets: {:?}, chains: {:?}, protocols: {:?}", 
+    tracing::info!("Received rate query - action: {:?}, assets: {:?}, chains: {:?}, protocols: {:?}",
         query.action, query.assets, query.chains, query.protocols);
-    tracing::debug!("Received rate query: {:?}", query);
 
-    // Fetch directly from protocols (no cache)
-    tracing::info!("📡 Fetching rates directly from protocols");
-    let aggregator = RateAggregator::new(state.config.clone());
-    let mut results = aggregator.get_rates(&query).await?;
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
 
-    // Sort based on action (supply APY descending by default)
-    results.sort_by(|a, b| match &query.action {
-        Some(Action::Supply) | None => b.apy.partial_cmp(&a.apy).unwrap(), // Descending for supply
-        Some(Action::Borrow) => a.apy.partial_cmp(&b.apy).unwrap(), // Ascending for borrow
-    });
-
-    // Results are returned already sorted by APY according to action; no explicit rank field.
+    // Read from MongoDB with pagination — already sorted by net_apy
+    let (results, total_count) = state.realtime_service.query_rates(&query).await?;
 
     let count = results.len();
-    
-    // Calculate total liquidity across all results
     let total_liquidity: u64 = results.iter().map(|r| r.liquidity).sum();
+    let total_pages = if total_count == 0 { 0 } else { (total_count + page_size - 1) / page_size };
 
     let response = RateResponse {
         success: true,
@@ -52,6 +43,10 @@ pub async fn get_rates(
         results,
         count,
         total_liquidity,
+        page,
+        page_size,
+        total_count: total_count as usize,
+        total_pages,
     };
 
     Ok(Json(response))
@@ -67,7 +62,7 @@ impl IntoResponse for AppError {
         let (status, error_message) = match self {
             AppError::Internal(err) => {
                 tracing::error!("Internal error: {:?}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                (StatusCode::INTERNAL_SERVER_ERROR, "An internal error occurred. Please try again later.".to_string())
             }
         };
 
@@ -208,4 +203,155 @@ pub async fn vault_history(
         .await?;
 
     Ok(Json(data))
+}
+
+// ============================================================================
+// LIQUIDITY POOL ENDPOINTS
+// ============================================================================
+
+/// GET /api/v1/pools
+/// Returns liquidity pools across DEXes, filterable by asset category, token, chain, protocol.
+/// Default sort: TVL descending (highest liquidity first).
+///
+/// Query parameters:
+/// - asset_categories_0 (optional): categories for one side, e.g. "btc-correlated"
+/// - asset_categories_1 (optional): categories for other side, e.g. "usd-correlated"
+/// - token_a (optional): search by token symbol (substring match on token0)
+/// - token_b (optional): search by token symbol (substring match on token1)
+/// - token (optional): search by token symbol, substring match on either side of pair
+/// - pair (optional): exact pair like "ETH/USDC"
+/// - chains (optional): "ethereum,solana,arbitrum"
+/// - protocols (optional): "uniswap,raydium"
+/// - pool_type (optional): "concentrated" or "standard"
+/// - min_tvl (optional): minimum TVL in USD (default: 10000)
+/// - min_volume (optional): minimum 24h volume in USD (default: 0)
+/// - page (optional): page number, 1-indexed (default: 1)
+/// - page_size (optional): results per page, max 100 (default: 20)
+/// GET /api/v1/pools/history
+/// Returns daily fee APR / TVL / volume time-series for a specific pool (90 days).
+///
+/// Query parameters:
+/// - pool_vault_id (optional): unique pool identifier
+/// - protocol (optional): e.g. "uniswap"
+/// - chain (optional): e.g. "ethereum"
+/// - pair (optional): e.g. "ETH/USDC"
+#[derive(serde::Deserialize, Debug)]
+pub struct PoolHistoryQuery {
+    pub pool_vault_id: Option<String>,
+    pub protocol: Option<Protocol>,
+    pub chain: Option<Chain>,
+    pub pair: Option<String>,
+}
+
+pub async fn pool_history(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<PoolHistoryQuery>,
+) -> Result<Json<PoolHistoryResponse>, AppError> {
+    let data = state.pool_historical_service
+        .get_pool_history(
+            params.pool_vault_id.as_deref(),
+            params.protocol.as_ref(),
+            params.chain.as_ref(),
+            params.pair.as_deref(),
+        )
+        .await?;
+
+    Ok(Json(data))
+}
+
+// ============================================================================
+// SCORE ENDPOINTS
+// ============================================================================
+
+/// POST /api/v1/score/pool
+/// Analyze a pool position and find better alternatives across protocols/chains.
+///
+/// Request body (JSON):
+/// {
+///   "token0": "CBBTC",
+///   "token1": "WETH",
+///   "protocol": "uniswap",   // optional — to identify YOUR pool
+///   "chain": "base",         // optional
+///   "fee_tier": 5,            // optional — basis points (5 = 0.05%, 30 = 0.30%, 100 = 1%)
+///   "min_tvl": 10000         // optional (default: 10000)
+/// }
+pub async fn score_pool(
+    State(state): State<Arc<AppState>>,
+    body: Bytes,
+) -> Result<Json<PoolScoreResponse>, AppError> {
+    let req: PoolScoreRequest = serde_json::from_slice(&body)
+        .map_err(|e| anyhow::anyhow!("Invalid request body: {}", e))?;
+
+    tracing::info!(
+        "Pool score request - token0: {}, token1: {}, protocol: {:?}, chain: {:?}, fee_tier: {:?}",
+        req.token0, req.token1, req.protocol, req.chain, req.fee_tier
+    );
+
+    let response = crate::services::score::score_pool(
+        &state.pool_realtime_service,
+        &req,
+    )
+    .await?;
+
+    Ok(Json(response))
+}
+
+/// POST /api/v1/score/lending
+/// Analyze a lending position and find better alternatives across protocols/chains.
+///
+/// Request body (JSON):
+/// {
+///   "supply": ["CBBTC", "WETH"],
+///   "borrow": ["USDC"],
+///   "protocol": "aave",      // optional — to identify YOUR position
+///   "chain": "base",         // optional
+///   "min_liquidity": 1000000 // optional (default: 1000000)
+/// }
+pub async fn score_lending(
+    State(state): State<Arc<AppState>>,
+    body: Bytes,
+) -> Result<Json<LendingScoreResponse>, AppError> {
+    let req: LendingScoreRequest = serde_json::from_slice(&body)
+        .map_err(|e| anyhow::anyhow!("Invalid request body: {}", e))?;
+
+    tracing::info!(
+        "Lending score request - supplies: {:?}, borrows: {:?}, protocol: {:?}, chain: {:?}",
+        req.supplies, req.borrows, req.protocol, req.chain
+    );
+
+    let response = crate::services::score::score_lending(
+        &state.realtime_service,
+        &req,
+    )
+    .await?;
+
+    Ok(Json(response))
+}
+
+pub async fn get_pools(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<PoolQuery>,
+) -> Result<Json<PoolResponse>, AppError> {
+    tracing::info!("Pool query - categories_0: {:?}, categories_1: {:?}, token_a: {:?}, token_b: {:?}, token: {:?}, pair: {:?}, chains: {:?}, protocols: {:?}",
+        query.asset_categories_0, query.asset_categories_1, query.token_a, query.token_b, query.token, query.pair, query.chains, query.protocols);
+
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
+
+    // Read from MongoDB with pagination — already sorted by fee_apr_24h desc
+    let (results, total_count) = state.pool_realtime_service.query_pools(&query).await?;
+
+    let count = results.len();
+    let total_pages = if total_count == 0 { 0 } else { (total_count + page_size) / page_size };
+
+    Ok(Json(PoolResponse {
+        success: true,
+        timestamp: Utc::now(),
+        results,
+        count,
+        page,
+        page_size,
+        total_count: total_count as usize,
+        total_pages,
+    }))
 }

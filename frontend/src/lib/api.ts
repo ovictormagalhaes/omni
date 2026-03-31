@@ -35,6 +35,10 @@ export interface RateResponse {
   timestamp: string
   results: RateResult[]
   count: number
+  page: number
+  pageSize: number
+  totalCount: number
+  totalPages: number
 }
 
 export interface SearchRatesParams {
@@ -43,7 +47,10 @@ export interface SearchRatesParams {
   protocols?: string
   operation_types?: string
   asset_categories?: string
+  token?: string
   min_liquidity?: number
+  page?: number
+  page_size?: number
 }
 
 // ─── Vault History (APY chart) ───────────────────────────────────────────────
@@ -95,6 +102,111 @@ export async function fetchVaultHistory(
   params: FetchVaultHistoryParams,
 ): Promise<VaultHistoryData> {
   const response = await axios.get<VaultHistoryData>(`${API_URL}/api/v1/rates/history`, {
+    params,
+  })
+  return response.data
+}
+
+// ─── Liquidity Pool Types ─────────────────────────────────────────────────────
+
+export type AssetCategory = 'usd-correlated' | 'stablecoin' | 'btc-correlated' | 'eth-correlated' | 'sol-correlated' | 'other'
+
+export interface PoolResult {
+  protocol: string
+  chain: string
+  token0: string
+  token1: string
+  pair: string
+  normalizedPair: string
+  token0Categories: AssetCategory[]
+  token1Categories: AssetCategory[]
+  poolType: 'standard' | 'concentrated'
+  feeTier: string
+  feeRateBps: number
+  tvlUsd: number
+  volume24h: number
+  volume7d: number
+  turnoverRatio24h: number
+  turnoverRatio7d: number
+  fees24h: number
+  fees7d: number
+  feeApr24h: number
+  feeApr7d: number
+  rewardsApr: number
+  totalApr: number
+  poolAddress: string
+  url: string
+  lastUpdate: string
+  poolVaultId: string
+}
+
+export interface PoolResponse {
+  success: boolean
+  timestamp: string
+  results: PoolResult[]
+  count: number
+  page: number
+  pageSize: number
+  totalCount: number
+  totalPages: number
+}
+
+export interface SearchPoolsParams {
+  asset_categories_0?: string
+  asset_categories_1?: string
+  token_a?: string
+  token_b?: string
+  token?: string
+  pair?: string
+  chains?: string
+  protocols?: string
+  pool_type?: string
+  min_tvl?: number
+  min_volume?: number
+  page?: number
+  page_size?: number
+}
+
+export interface PoolHistoryPoint {
+  date: string
+  tvl_usd: number
+  volume_24h_usd: number
+  fee_rate_bps: number
+  turnover_ratio_24h: number
+  fee_apr_24h: number
+  fee_apr_7d: number
+  rewards_apr: number
+}
+
+export interface PoolHistoryData {
+  success: boolean
+  pool_vault_id: string
+  pair?: string
+  protocol?: string
+  chain?: string
+  url?: string
+  days: number
+  points: PoolHistoryPoint[]
+  avg_fee_apr: number
+  min_fee_apr: number
+  max_fee_apr: number
+  avg_tvl: number
+  data_available: boolean
+}
+
+// ─── Pool API calls ──────────────────────────────────────────────────────────
+
+export async function searchPools(params: SearchPoolsParams): Promise<PoolResponse> {
+  const response = await axios.get<PoolResponse>(`${API_URL}/api/v1/pools`, {
+    params,
+  })
+  return response.data
+}
+
+export async function fetchPoolHistory(
+  params: { pool_vault_id?: string; protocol?: string; chain?: string; pair?: string },
+): Promise<PoolHistoryData> {
+  const response = await axios.get<PoolHistoryData>(`${API_URL}/api/v1/pools/history`, {
     params,
   })
   return response.data

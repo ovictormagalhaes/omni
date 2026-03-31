@@ -1,7 +1,9 @@
-use crate::models::{Asset, Chain, Protocol};
+use crate::models::{Asset, Chain, Protocol, ProtocolRate};
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use super::RateIndexer;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,7 +114,10 @@ pub struct FluidIndexer {
 impl FluidIndexer {
     pub fn new(api_url: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             api_url,
         }
     }
@@ -275,8 +280,36 @@ impl FluidIndexer {
         Ok(rates)
     }
 
-    pub fn get_protocol_url(&self) -> String {
-        "https://fluid.instadapp.io/".to_string()
+    pub fn get_protocol_url(&self, chain: &Chain, asset: &Asset) -> String {
+        let chain_id = match chain {
+            Chain::Ethereum => "1",
+            Chain::Base => "8453",
+            Chain::Arbitrum => "42161",
+            _ => return "https://fluid.io".to_string(),
+        };
+        format!("https://fluid.io/lending/{}/{}", chain_id, asset)
+    }
+}
+
+#[async_trait]
+impl RateIndexer for FluidIndexer {
+    fn protocol(&self) -> Protocol {
+        Protocol::Fluid
+    }
+
+    fn supported_chains(&self) -> Vec<Chain> {
+        vec![Chain::Ethereum]
+    }
+
+    async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
+        if !self.supported_chains().contains(chain) {
+            return Ok(vec![]);
+        }
+        self.fetch_rates().await
+    }
+
+    fn rate_url(&self, rate: &ProtocolRate) -> String {
+        self.get_protocol_url(&rate.chain, &rate.asset)
     }
 }
 

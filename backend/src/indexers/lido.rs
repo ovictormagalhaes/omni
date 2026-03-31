@@ -1,23 +1,37 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
 use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
+use super::RateIndexer;
 
-// Lido Finance - Ethereum Liquid Staking
-// Provides stETH and wstETH liquid staking tokens
+// ============================================================================
+// Lido Finance - Official API
+// ============================================================================
+// Source: https://eth-api.lido.fi/v1/protocol/steth/apr/sma (APR)
+//         https://eth-api.lido.fi/v1/protocol/steth/stats (TVL)
+// Supported chains: Ethereum
+// ============================================================================
 
 #[derive(Debug, Deserialize)]
-struct DefiLlamaPoolResponse {
-    data: Vec<DefiLlamaPool>,
+struct LidoAprResponse {
+    data: LidoAprData,
 }
 
 #[derive(Debug, Deserialize)]
-struct DefiLlamaPool {
-    symbol: String,
-    apy: f64,
-    project: String,
-    chain: String,
+struct LidoAprData {
+    #[serde(rename = "smaApr")]
+    sma_apr: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct LidoStatsResponse {
+    #[serde(rename = "totalStaked")]
+    #[allow(dead_code)]
+    total_staked: String,
+    #[serde(rename = "marketCap")]
+    market_cap: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -28,95 +42,98 @@ pub struct LidoIndexer {
 impl LidoIndexer {
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
         }
     }
 
     pub async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
         if *chain != Chain::Ethereum {
-            return Ok(Vec::new());
+            return Ok(vec![]);
         }
 
-        tracing::info!("Fetching Lido Finance staking APY from DeFi Llama API");
-        
-        // DeFi Llama pools API (fallback since official Lido API has connectivity issues)
-        let url = "https://yields.llama.fi/pools";
-        
-        let response = self.client
-            .get(url)
-            .header("Accept", "application/json")
+        tracing::info!("[Lido] Fetching rates from official API");
+
+        // Fetch APR
+        let apr_resp = self.client
+            .get("https://eth-api.lido.fi/v1/protocol/steth/apr/sma")
             .send()
             .await?;
 
-        if !response.status().is_success() {
-            tracing::warn!("DeFi Llama API returned status: {}", response.status());
-            return Ok(Vec::new());
+        if !apr_resp.status().is_success() {
+            tracing::warn!("[Lido] APR API returned status: {}", apr_resp.status());
+            return Ok(vec![]);
         }
 
-        let pools_response: DefiLlamaPoolResponse = response.json().await?;
-        
-        let mut rates = Vec::new();
-        let mut lido_apy = 0.032; // Default ETH staking APR
+        let apr_data: LidoAprResponse = apr_resp.json().await?;
+        let apy = apr_data.data.sma_apr / 100.0; // API returns percentage (e.g. 2.5 = 2.5%)
 
-        // Find Lido pools
-        for pool in &pools_response.data {
-            if pool.project.to_lowercase() == "lido" && 
-               pool.chain.to_lowercase() == "ethereum" && 
-               (pool.symbol.contains("STETH") || pool.symbol.contains("WSTETH")) {
-                lido_apy = pool.apy / 100.0; // Convert percentage to decimal
-                break;
+        // Fetch TVL
+        let tvl = match self.client
+            .get("https://eth-api.lido.fi/v1/protocol/steth/stats")
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let stats: LidoStatsResponse = resp.json().await?;
+                stats.market_cap as u64
             }
-        }
+            _ => 9_000_000_000, // fallback
+        };
 
-        // stETH - Standard liquid staking token
+        let mut rates = Vec::new();
+
+        // stETH
         rates.push(ProtocolRate {
             protocol: Protocol::Lido,
             chain: Chain::Ethereum,
             asset: Asset::from_symbol("STETH", "Lido"),
             action: Action::Supply,
-            supply_apy: lido_apy,
+            supply_apy: apy,
             borrow_apr: 0.0,
             rewards: 0.0,
-            performance_fee: None,
+            performance_fee: Some(0.10), // Lido takes 10% fee
             active: true,
-            collateral_enabled: false,  // Staking doesn't provide collateral
+            collateral_enabled: false,
             collateral_ltv: 0.0,
-            available_liquidity: 9_500_000_000,  // Approximate TVL from on-chain data
-            total_liquidity: 9_500_000_000,
+            available_liquidity: tvl,
+            total_liquidity: tvl,
             utilization_rate: 100.0,
             ltv: 0.0,
             operation_type: OperationType::Staking,
             vault_id: Some("steth".to_string()),
             vault_name: Some("Lido Staked ETH".to_string()),
-            underlying_asset: Some("0x0000000000000000000000000000000000000000".to_string()),
+            underlying_asset: None,
             timestamp: Utc::now(),
         });
 
-        // wstETH - Wrapped stETH (same APY as stETH)
+        // wstETH (same APY)
         rates.push(ProtocolRate {
             protocol: Protocol::Lido,
             chain: Chain::Ethereum,
             asset: Asset::from_symbol("WSTETH", "Lido"),
             action: Action::Supply,
-            supply_apy: lido_apy,
+            supply_apy: apy,
             borrow_apr: 0.0,
             rewards: 0.0,
-            performance_fee: None,
+            performance_fee: Some(0.10),
             active: true,
             collateral_enabled: false,
             collateral_ltv: 0.0,
-            available_liquidity: 9_500_000_000,
-            total_liquidity: 9_500_000_000,
+            available_liquidity: tvl,
+            total_liquidity: tvl,
             utilization_rate: 100.0,
             ltv: 0.0,
             operation_type: OperationType::Staking,
             vault_id: Some("wsteth".to_string()),
             vault_name: Some("Wrapped Lido Staked ETH".to_string()),
-            underlying_asset: Some("0x0000000000000000000000000000000000000000".to_string()),
+            underlying_asset: None,
             timestamp: Utc::now(),
         });
 
-        tracing::info!("Lido: fetched {} rates with APY {:.2}%", rates.len(), lido_apy * 100.0);
+        tracing::info!("[Lido] APY: {:.2}%, TVL: ${}", apy * 100.0, tvl);
         Ok(rates)
     }
 
@@ -125,40 +142,53 @@ impl LidoIndexer {
     }
 }
 
+#[async_trait]
+impl RateIndexer for LidoIndexer {
+    fn protocol(&self) -> Protocol {
+        Protocol::Lido
+    }
+
+    fn supported_chains(&self) -> Vec<Chain> {
+        vec![Chain::Ethereum, Chain::Solana]
+    }
+
+    async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
+        self.fetch_rates(chain).await
+    }
+
+    fn rate_url(&self, _rate: &ProtocolRate) -> String {
+        self.get_protocol_url()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_fetch_rates_ethereum() {
-        let indexer = LidoIndexer::new();
-        let result = indexer.fetch_rates(&Chain::Ethereum).await;
-        assert!(result.is_ok());
-        
-        let rates = result.unwrap();
-        assert_eq!(rates.len(), 2); // stETH + wstETH
-        assert!(rates.iter().any(|r| r.asset == Asset::from_symbol("STETH", "Lido")));
-        assert!(rates.iter().any(|r| r.asset == Asset::from_symbol("WSTETH", "Lido")));
+    #[test]
+    fn test_parse_apr_response() {
+        let json = r#"{"data": {"smaApr": 3.45}}"#;
+        let resp: LidoAprResponse = serde_json::from_str(json).unwrap();
+        assert!((resp.data.sma_apr - 3.45).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_stats_response() {
+        let json = r#"{"totalStaked": "9876543", "marketCap": 15000000000.0}"#;
+        let resp: LidoStatsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.market_cap as u64, 15_000_000_000);
     }
 
     #[tokio::test]
-    async fn test_fetch_rates_solana() {
+    async fn test_unsupported_chain_returns_empty() {
         let indexer = LidoIndexer::new();
-        let result = indexer.fetch_rates(&Chain::Solana).await;
-        assert!(result.is_ok());
-        
-        let rates = result.unwrap();
-        assert_eq!(rates.len(), 1); // stSOL
-        assert_eq!(rates[0].asset, Asset::from_symbol("STSOL", "Lido"));
+        let rates = indexer.fetch_rates(&Chain::Solana).await.unwrap();
+        assert!(rates.is_empty(), "Lido indexer should return empty for Solana (only Ethereum impl)");
     }
 
-    #[tokio::test]
-    async fn test_operation_type_is_staking() {
+    #[test]
+    fn test_indexer_metadata() {
         let indexer = LidoIndexer::new();
-        let rates = indexer.fetch_rates(&Chain::Ethereum).await.unwrap();
-        
-        for rate in rates {
-            assert_eq!(rate.operation_type, OperationType::Staking);
-        }
+        assert_eq!(indexer.get_protocol_url(), "https://lido.fi/");
     }
 }

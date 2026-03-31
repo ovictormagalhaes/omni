@@ -1,9 +1,19 @@
 import Logo from './Logo'
 import { Menu, X } from 'lucide-react'
 import { useState } from 'react'
+import type { Tab } from '../App'
 
-export default function Header() {
+interface HeaderProps {
+  onNavigate: (tab: Tab) => void
+}
+
+export default function Header({ onNavigate }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  const handleNav = (tab: Tab) => {
+    onNavigate(tab)
+    setMobileOpen(false)
+  }
 
   return (
     <header className="sticky top-0 z-50 glass border-b border-slate-700/30">
@@ -15,22 +25,15 @@ export default function Header() {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            <a href="#rates" className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
-              Rates
-            </a>
-            <a href="#strategy" className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
+            <button onClick={() => handleNav('rates')} className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
+              Earn
+            </button>
+            <button onClick={() => handleNav('pools')} className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
+              Liquidity
+            </button>
+            <button onClick={() => handleNav('strategy')} className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
               Strategy
-            </a>
-            <a href="#docs" className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
-              Docs
-            </a>
-            <div className="w-px h-5 bg-slate-700 mx-2" />
-            <a
-              href="#rates"
-              className="ml-1 px-4 py-2 text-sm font-medium bg-omni-blue/10 text-omni-blue-light border border-omni-blue/20 rounded-lg hover:bg-omni-blue/20 transition-all"
-            >
-              Launch App
-            </a>
+            </button>
           </nav>
 
           {/* Mobile toggle */}
@@ -45,22 +48,15 @@ export default function Header() {
         {/* Mobile nav */}
         {mobileOpen && (
           <nav className="md:hidden pb-4 flex flex-col gap-1 animate-fade-in">
-            <a href="#rates" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
-              Rates
-            </a>
-            <a href="#strategy" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
+            <button onClick={() => handleNav('rates')} className="px-4 py-2.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all text-left">
+              Earn
+            </button>
+            <button onClick={() => handleNav('pools')} className="px-4 py-2.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all text-left">
+              Liquidity
+            </button>
+            <button onClick={() => handleNav('strategy')} className="px-4 py-2.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all text-left">
               Strategy
-            </a>
-            <a href="#docs" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all">
-              Docs
-            </a>
-            <a
-              href="#rates"
-              onClick={() => setMobileOpen(false)}
-              className="mt-2 px-4 py-2.5 text-sm font-medium bg-omni-blue/10 text-omni-blue-light border border-omni-blue/20 rounded-lg text-center"
-            >
-              Launch App
-            </a>
+            </button>
           </nav>
         )}
       </div>

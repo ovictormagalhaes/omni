@@ -1,9 +1,14 @@
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
+use std::collections::HashMap;
 use futures::stream::{self, StreamExt};
 use crate::{
-    models::RateQuery,
-    services::{aggregator::RateAggregator, HistoricalDataService, HistoricalFetcher, RealtimeService, historical_fetcher::HistoricalDataPoint},
+    models::{RateQuery, PoolQuery, PoolResult, PoolSnapshot, ProtocolStats, PoolCollectionStats},
+    services::{
+        aggregator::RateAggregator, HistoricalDataService, HistoricalFetcher, RealtimeService,
+        PoolHistoricalService, PoolRealtimeService, historical_fetcher::HistoricalDataPoint,
+        pool_historical_fetcher::PoolHistoricalFetcher,
+    },
 };
 
 /// Daily collection worker that gathers APY/APR data for backtesting
@@ -18,7 +23,11 @@ pub struct DailyCollectionWorker {
     historical_service: HistoricalDataService,
     historical_fetcher: HistoricalFetcher,
     realtime_service: RealtimeService,
+    pool_historical_service: PoolHistoricalService,
+    pool_realtime_service: PoolRealtimeService,
+    pool_historical_fetcher: PoolHistoricalFetcher,
     backfill_days: i64,
+    backfill_concurrency: usize,
 }
 
 impl DailyCollectionWorker {
@@ -26,15 +35,22 @@ impl DailyCollectionWorker {
         aggregator: RateAggregator,
         historical_service: HistoricalDataService,
         realtime_service: RealtimeService,
+        pool_historical_service: PoolHistoricalService,
+        pool_realtime_service: PoolRealtimeService,
         backfill_days: i64,
+        backfill_concurrency: usize,
         graph_api_key: Option<String>,
     ) -> Self {
         Self {
             aggregator,
             historical_service,
-            historical_fetcher: HistoricalFetcher::new(graph_api_key),
+            historical_fetcher: HistoricalFetcher::new(graph_api_key.clone()),
             realtime_service,
+            pool_historical_service,
+            pool_realtime_service,
+            pool_historical_fetcher: PoolHistoricalFetcher::new(graph_api_key),
             backfill_days,
+            backfill_concurrency,
         }
     }
     
@@ -46,14 +62,25 @@ impl DailyCollectionWorker {
         let start_time = Utc::now();
         tracing::info!("🔄 Starting daily collection worker");
         
-        // Check if already collected today
-        let already_collected = self.historical_service.has_snapshots_for_today().await?;
+        // Check if a previous run already completed successfully today
+        let already_collected = self.historical_service.has_successful_execution_for_today().await?;
         if already_collected {
-            tracing::info!("✅ Today's snapshot already exists, skipping collection");
+            tracing::info!("✅ Today's rate snapshot already exists, skipping rate collection");
             tracing::info!("📊 Consolidating rate_realtime collection...");
             let consolidated_count = self.realtime_service.consolidate_all().await?;
             tracing::info!("✅ Consolidated {} vaults into rate_realtime", consolidated_count);
-            
+
+            // Always collect pools even if rates already collected today
+            let pool_query = PoolQuery {
+                asset_categories_0: None, asset_categories_1: None, token_a: None, token_b: None, token: None, pair: None, chains: None,
+                protocols: None, pool_type: None, min_tvl: 0, min_volume: 0,
+                normalized_pair: None, page: 1, page_size: 100,
+            };
+            match self.aggregator.get_pools(&pool_query).await {
+                Ok(pools) => self.save_pools(&pools, Utc::now()).await,
+                Err(e) => tracing::warn!("⚠️ Failed to fetch pools: {}", e),
+            }
+
             return Ok(CollectionResult {
                 success: true,
                 collected_date: Utc::now(),
@@ -70,122 +97,116 @@ impl DailyCollectionWorker {
             });
         }
         
-        // Collect current rates for ALL vaults
-        tracing::info!("📡 Fetching current rates from all protocols...");
-        let query = RateQuery {
-            action: None,       // All actions
-            assets: None,        // All assets
-            chains: None,       // All chains
-            protocols: None,    // All protocols
-            operation_types: None, // All operation types
-            asset_categories: None, // All categories
-            min_liquidity: 0,   // No minimum (get everything)
+        // P0 OPTIMIZATION: Fetch rates AND pools in parallel
+        tracing::info!("📡 Fetching rates + pools in parallel from all protocols...");
+        let rate_query = RateQuery {
+            action: None,
+            assets: None,
+            chains: None,
+            protocols: None,
+            operation_types: None,
+            asset_categories: None,
+            token: None,
+            min_liquidity: 0,
+            page: 1,
+            page_size: 100,
         };
-        
-        let rates = self.aggregator.get_rates(&query).await?;
-        tracing::info!("✅ Fetched {} rates", rates.len());
-        
-        // Determine which vaults need backfill
-        // For MVP: Always backfill all vaults to ensure historical data collection
-        let mut vaults_needing_backfill = Vec::new();
-        for rate in &rates {
-            // Generate vault_id to check if it exists
-            let vault_id = crate::models::RateSnapshot::generate_vault_id(
-                &rate.protocol,
-                &rate.chain,
-                &rate.asset.to_string(),
-                &rate.url,
-                rate.operation_type,
-                Some(&rate.action),
-            );
-            
-            // For now: ALWAYS attempt backfill (APIs will return empty if no data)
-            // This ensures we try to fetch historical data even if vault exists
-            vaults_needing_backfill.push((vault_id.clone(), rate));
-            
-            let has_any_data = self.historical_service
-                .get_latest_snapshot_date(&vault_id)
-                .await?
-                .is_some();
-            
-            if !has_any_data {
-                tracing::info!(
-                    "🆕 New vault: {} {} {} (will backfill {} days)",
-                    rate.protocol,
-                    rate.chain,
-                    rate.asset.to_string(),
-                    self.backfill_days
-                );
-            } else {
-                tracing::debug!(
-                    "🔄 Existing vault: {} {} {} (re-attempting backfill)",
-                    rate.protocol,
-                    rate.chain,
-                    rate.asset.to_string()
-                );
+        let pool_query = PoolQuery {
+            asset_categories_0: None,
+            asset_categories_1: None,
+            token_a: None,
+            token_b: None,
+            token: None,
+            pair: None,
+            chains: None,
+            protocols: None,
+            pool_type: None,
+            min_tvl: 0,
+            min_volume: 0,
+            normalized_pair: None,
+            page: 1,
+            page_size: 100,
+        };
+
+        let (rates_result, pools_result) = tokio::join!(
+            self.aggregator.get_rates_with_meta(&rate_query),
+            self.aggregator.get_pools_with_meta(&pool_query),
+        );
+
+        let rates_output = rates_result?;
+        let rates = rates_output.rates;
+        let rate_task_meta = rates_output.task_meta;
+
+        let (pools_fetched, pool_task_meta) = match pools_result {
+            Ok(output) => (output.pools, output.task_meta),
+            Err(e) => {
+                tracing::warn!("⚠️ Failed to fetch pools in parallel: {}", e);
+                (vec![], vec![])
             }
-        }
+        };
+        tracing::info!("✅ Fetched {} rates + {} pools in parallel", rates.len(), pools_fetched.len());
         
-        // Perform backfill for new vaults
+        // P1+P2: Smart backfill — batch check which vaults have data (1 query instead of N)
+        let vault_ids: Vec<(String, &crate::models::RateResult)> = rates.iter()
+            .map(|rate| {
+                let vault_id = crate::models::RateSnapshot::generate_vault_id(
+                    &rate.protocol, &rate.chain, &rate.asset.to_string(),
+                    &rate.url, rate.operation_type, Some(&rate.action),
+                );
+                (vault_id, rate)
+            })
+            .collect();
+
+        // P2: Batch fetch latest APY for ALL vaults (1 aggregation — skip unchanged rates)
+        let event_change_vault_ids: Vec<String> = vault_ids.iter()
+            .map(|(vid, _)| vid.clone())
+            .collect();
+
+        let latest_apys = self.historical_service
+            .get_latest_apys_batch(&event_change_vault_ids)
+            .await
+            .unwrap_or_default();
+
+        // P1: Smart backfill — only backfill vaults WITHOUT any data
+        let existing_vault_ids = self.historical_service
+            .get_vaults_with_data(&vault_ids.iter().map(|(v, _)| v.as_str()).collect::<Vec<_>>())
+            .await
+            .unwrap_or_default();
+
+        let vaults_needing_backfill: Vec<_> = vault_ids.iter()
+            .filter(|(vid, _)| !existing_vault_ids.contains(vid))
+            .map(|(vid, rate)| (vid.clone(), *rate))
+            .collect();
+
+        let new_vaults = vaults_needing_backfill.len();
+        if new_vaults > 0 {
+            tracing::info!("🆕 {} new vaults need backfill (skipping {} existing)", new_vaults, vault_ids.len() - new_vaults);
+        }
+
         let (backfills_performed, vaults_with_real_history) = if !vaults_needing_backfill.is_empty() {
-            tracing::info!(
-                "⏳ Backfilling {} vaults with {} days of data...",
-                vaults_needing_backfill.len(),
-                self.backfill_days
-            );
             self.backfill_vaults(&vaults_needing_backfill).await?
         } else {
             (0, 0)
         };
-        
-        // Save today's snapshot
+
+        // Save today's snapshot with event-change filtering
         tracing::info!("💾 Saving today's snapshot...");
         let today = Utc::now();
 
-        // --- EVENT CHANGE LOGIC ---
-        use crate::models::Protocol;
         let mut filtered_rates = Vec::with_capacity(rates.len());
-        for rate in &rates {
-            match rate.protocol {
-                Protocol::Jupiter | Protocol::Jito | Protocol::RocketPool | Protocol::Kamino | Protocol::Fluid => {
-                    // Busca o último snapshot desse vault
-                    let vault_id = rate.vault_id.as_ref().cloned().unwrap_or_else(|| {
-                        crate::models::RateSnapshot::generate_vault_id(
-                            &rate.protocol,
-                            &rate.chain,
-                            &rate.asset.to_string(),
-                            &rate.url,
-                            rate.operation_type,
-                            Some(&rate.action),
-                        )
-                    });
-                    if let Ok(Some(last_snapshot_date)) = self.historical_service.get_latest_snapshot_date(&vault_id).await {
-                        // Busca o último snapshot
-                        if let Ok(mut history) = self.historical_service.query_history(crate::models::HistoricalQuery {
-                            start_date: last_snapshot_date,
-                            end_date: last_snapshot_date,
-                            protocol: Some(rate.protocol.clone()),
-                            chain: Some(rate.chain.clone()),
-                            asset: Some(rate.asset.to_string()),
-                            action: None,
-                        }).await {
-                            if let Some(last) = history.last() {
-                                // Só salva se mudou o net_apy
-                                if (last.net_apy - rate.net_apy).abs() > 1e-8 {
-                                    filtered_rates.push(rate.clone());
-                                }
-                                // else: não mudou, não salva
-                                continue;
-                            }
-                        }
-                    }
-                    // Se não tem snapshot anterior, salva
-                    filtered_rates.push(rate.clone());
-                }
-                _ => {
-                    filtered_rates.push(rate.clone());
+        let mut event_skipped = 0;
+        for (vault_id, rate) in &vault_ids {
+            // Skip unchanged rates for ALL protocols (event-change filtering)
+            if let Some(&last_apy) = latest_apys.get(vault_id) {
+                if (last_apy - rate.net_apy).abs() <= 1e-8 {
+                    event_skipped += 1;
+                    continue;
                 }
             }
+            filtered_rates.push((*rate).clone());
+        }
+        if event_skipped > 0 {
+            tracing::info!("Event-change: skipped {} unchanged rates, saving {}", event_skipped, filtered_rates.len());
         }
 
         let snapshots_saved = self.historical_service
@@ -196,7 +217,10 @@ impl DailyCollectionWorker {
         tracing::info!("📊 Consolidating rate_realtime collection...");
         let consolidated_count = self.realtime_service.consolidate_all().await?;
         tracing::info!("✅ Consolidated {} vaults into rate_realtime", consolidated_count);
-        
+
+        // Save pool data (already fetched in parallel above)
+        self.save_pools(&pools_fetched, today).await;
+
         let duration = (Utc::now() - start_time).num_seconds();
         
         let snapshots_inserted = rates.len();
@@ -212,13 +236,73 @@ impl DailyCollectionWorker {
             duration
         );
         
+        // Build per-protocol+chain breakdown for rates
+        // Count saved vaults per (protocol, chain)
+        let mut saved_counts: HashMap<(crate::models::Protocol, crate::models::Chain), usize> = HashMap::new();
+        for rate in &filtered_rates {
+            *saved_counts.entry((rate.protocol.clone(), rate.chain.clone())).or_default() += 1;
+        }
+
+        let protocol_breakdown: Vec<ProtocolStats> = rate_task_meta.iter().map(|meta| {
+            let vaults_saved = saved_counts
+                .get(&(meta.protocol.clone(), meta.chain.clone()))
+                .copied()
+                .unwrap_or(0);
+            ProtocolStats {
+                protocol: meta.protocol.clone(),
+                chain: meta.chain.clone(),
+                vaults_found: meta.items_found,
+                vaults_saved,
+                execution_time_ms: meta.duration_ms,
+                error: meta.error.clone(),
+            }
+        }).collect();
+
+        // Build per-protocol+chain breakdown for pools
+        let pool_breakdown: Vec<PoolCollectionStats> = pool_task_meta.iter().map(|meta| {
+            PoolCollectionStats {
+                protocol: meta.protocol.clone(),
+                chain: meta.chain.clone(),
+                pools_found: meta.items_found,
+                pools_saved: meta.items_found, // all fetched pools are saved
+                execution_time_ms: meta.duration_ms,
+                error: meta.error.clone(),
+            }
+        }).collect();
+
+        // Determine execution status
+        let failed_rate_protocols: Vec<String> = rate_task_meta.iter()
+            .filter(|m| m.error.is_some())
+            .map(|m| format!("{:?}/{:?}", m.protocol, m.chain))
+            .collect();
+        let failed_pool_protocols: Vec<String> = pool_task_meta.iter()
+            .filter(|m| m.error.is_some())
+            .map(|m| format!("{:?}/{:?}", m.protocol, m.chain))
+            .collect();
+        let all_failed: Vec<String> = failed_rate_protocols.iter().chain(&failed_pool_protocols).cloned().collect();
+
+        let total_tasks = rate_task_meta.len() + pool_task_meta.len();
+        let (status, exec_error) = if all_failed.is_empty() {
+            (crate::models::ExecutionStatus::Success, None)
+        } else if all_failed.len() < total_tasks {
+            (crate::models::ExecutionStatus::PartialSuccess, Some(crate::models::ExecutionError {
+                message: format!("{} indexer(s) failed", all_failed.len()),
+                failed_protocols: all_failed,
+            }))
+        } else {
+            (crate::models::ExecutionStatus::Failed, Some(crate::models::ExecutionError {
+                message: "All indexers failed".to_string(),
+                failed_protocols: all_failed,
+            }))
+        };
+
         // Save worker execution record
         let execution_record = crate::models::WorkerExecutionRecord {
             id: None,
             executed_at: Utc::now(),
             collection_date: today.format("%Y-%m-%d").to_string(),
-            status: crate::models::ExecutionStatus::Success,
-            error: None,
+            status,
+            error: exec_error,
             stats: crate::models::ExecutionStats {
                 vaults_processed: rates.len(),
                 snapshots_inserted: snapshots_saved,
@@ -230,7 +314,8 @@ impl DailyCollectionWorker {
                 total_snapshots_in_db: None,
             },
             duration_seconds: duration,
-            protocol_breakdown: vec![],
+            protocol_breakdown,
+            pool_breakdown,
             system_info: crate::models::SystemInfo {
                 hostname: Some(std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".to_string())),
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
@@ -260,6 +345,211 @@ impl DailyCollectionWorker {
     
     /// Backfill-only mode: just run backfill without daily collection
     /// Useful for re-running backfill after fixes or for testing
+    /// Save pre-fetched pool data → upsert pool_realtime + save snapshots (event-changed)
+    async fn save_pools(&self, pools: &[PoolResult], today: DateTime<Utc>) {
+        if pools.is_empty() {
+            tracing::info!("No pool data to save");
+            return;
+        }
+
+        tracing::info!("💾 Saving {} pools to MongoDB...", pools.len());
+
+        // P3: Run upsert + snapshots in parallel (independent writes to different collections)
+        let pools_vec = pools.to_vec();
+        let pool_realtime = self.pool_realtime_service.clone();
+        let pool_historical = self.pool_historical_service.clone();
+
+        let (upsert_result, snapshot_result) = tokio::join!(
+            pool_realtime.upsert_from_results(&pools_vec),
+            pool_historical.save_pool_snapshots(&pools_vec, today),
+        );
+
+        match upsert_result {
+            Ok(count) => tracing::info!("💾 Upserted {} pools into pool_realtime", count),
+            Err(e) => tracing::warn!("⚠️ Failed to upsert pool_realtime: {}", e),
+        }
+        match snapshot_result {
+            Ok(saved) => tracing::info!("💾 Pool snapshots: {} saved (event-changed)", saved),
+            Err(e) => tracing::warn!("⚠️ Failed to save pool snapshots: {}", e),
+        }
+
+        // P3: Run consolidation + backfill in parallel (both read snapshots, write to realtime)
+        let pool_realtime2 = self.pool_realtime_service.clone();
+        let (consolidate_result, backfill_result) = tokio::join!(
+            pool_realtime2.consolidate_all(),
+            self.backfill_pools(pools),
+        );
+
+        match consolidate_result {
+            Ok(count) => tracing::info!("📊 Consolidated metrics for {} pools", count),
+            Err(e) => tracing::warn!("⚠️ Failed to consolidate pool metrics: {}", e),
+        }
+        match backfill_result {
+            Ok((backfilled, pools_with_history)) => {
+                tracing::info!("📊 Pool backfill: {} snapshots across {} pools", backfilled, pools_with_history);
+            }
+            Err(e) => tracing::warn!("⚠️ Failed to backfill pool history: {}", e),
+        }
+    }
+
+    // ========================================================================
+    // POOL BACKFILL: Fetch historical poolDayData from The Graph
+    // ========================================================================
+
+    /// Backfill historical data for pools that lack sufficient snapshot history.
+    async fn backfill_pools(&self, pools: &[PoolResult]) -> Result<(usize, usize)> {
+        // Only backfill pools from protocols that support historical fetching
+        let backfillable: Vec<&PoolResult> = pools.iter()
+            .filter(|p| matches!(p.protocol, crate::models::Protocol::Uniswap))
+            .collect();
+
+        if backfillable.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let today = Utc::now();
+        let backfill_start = today - Duration::days(self.backfill_days);
+        let expected_days = self.backfill_days as usize;
+
+        // Step 1: Batch check which pools already have enough history (1 aggregation vs N queries)
+        let pool_vault_ids: Vec<&str> = backfillable.iter()
+            .map(|p| p.pool_vault_id.as_str())
+            .collect();
+
+        let snapshot_counts = self.pool_historical_service
+            .get_snapshot_counts_batch(&pool_vault_ids, backfill_start, today)
+            .await
+            .unwrap_or_default();
+
+        let needs_backfill: Vec<&PoolResult> = backfillable.into_iter()
+            .filter(|p| {
+                let count = snapshot_counts.get(&p.pool_vault_id).copied().unwrap_or(0);
+                count < (expected_days * 80 / 100)
+            })
+            .collect();
+
+        if needs_backfill.is_empty() {
+            tracing::info!("Pool backfill: all {} pools already have >=80% history, skipping", pool_vault_ids.len());
+            return Ok((0, 0));
+        }
+
+        tracing::info!(
+            "⏳ Pool backfill: {} pools need data (skipped {} with enough history)",
+            needs_backfill.len(), pool_vault_ids.len() - needs_backfill.len()
+        );
+
+        // Step 2: Group pools by chain for batch GraphQL queries
+        let mut by_chain: std::collections::HashMap<crate::models::Chain, Vec<&PoolResult>> = std::collections::HashMap::new();
+        for pool in &needs_backfill {
+            by_chain.entry(pool.chain.clone()).or_default().push(pool);
+        }
+
+        // Step 3: Batch fetch historical data per chain (1 query per ~30 pools instead of 1 per pool)
+        let mut total_backfilled = 0;
+        let mut pools_with_history = 0;
+
+        for (chain, chain_pools) in &by_chain {
+            let addresses: Vec<String> = chain_pools.iter()
+                .map(|p| p.pool_address.clone())
+                .collect();
+
+            let batch_data = match self.pool_historical_fetcher
+                .fetch_pool_historical_batch(
+                    &crate::models::Protocol::Uniswap,
+                    chain,
+                    &addresses,
+                    backfill_start,
+                    today,
+                )
+                .await
+            {
+                Ok(data) => data,
+                Err(e) => {
+                    tracing::warn!("Pool backfill batch failed for {:?}: {:?}", chain, e);
+                    continue;
+                }
+            };
+
+            // Build lookup from pool_address → PoolResult
+            let pool_by_addr: std::collections::HashMap<String, &&PoolResult> = chain_pools.iter()
+                .map(|p| (p.pool_address.to_lowercase(), p))
+                .collect();
+
+            // Step 4: Convert data points to snapshots and batch insert
+            let mut all_snapshots: Vec<PoolSnapshot> = Vec::new();
+
+            for (pool_addr, data_points) in &batch_data {
+                let pool = match pool_by_addr.get(pool_addr) {
+                    Some(p) => *p,
+                    None => continue,
+                };
+
+                let existing_count = snapshot_counts.get(&pool.pool_vault_id).copied().unwrap_or(0);
+                // Build existing dates set from count — we already know how many exist,
+                // but not which dates. For simplicity, just insert and let the unique index dedup.
+                let _ = existing_count;
+
+                for point in data_points {
+                    let day_start = point.date.date_naive().and_hms_opt(0, 0, 0).unwrap();
+                    let day_dt = DateTime::from_naive_utc_and_offset(day_start, Utc);
+
+                    let fee_apr_24h = if point.tvl_usd > 0.0 {
+                        (point.fees_usd / point.tvl_usd) * 365.0 * 100.0
+                    } else {
+                        0.0
+                    };
+
+                    let turnover = if point.tvl_usd > 0.0 {
+                        point.volume_usd / point.tvl_usd
+                    } else {
+                        0.0
+                    };
+
+                    all_snapshots.push(PoolSnapshot {
+                        id: None,
+                        date: day_dt,
+                        pool_vault_id: pool.pool_vault_id.clone(),
+                        protocol: pool.protocol.clone(),
+                        chain: pool.chain.clone(),
+                        token0: pool.token0.clone(),
+                        token1: pool.token1.clone(),
+                        pair: pool.pair.clone(),
+                        normalized_pair: pool.normalized_pair.clone(),
+                        pool_type: pool.pool_type.clone(),
+                        fee_rate_bps: pool.fee_rate_bps,
+                        tvl_usd: point.tvl_usd,
+                        volume_24h_usd: point.volume_usd,
+                        fees_24h_usd: point.fees_usd,
+                        turnover_ratio_24h: turnover,
+                        fee_apr_24h,
+                        fee_apr_7d: fee_apr_24h,
+                        rewards_apr: 0.0,
+                        url: pool.url.clone(),
+                        collected_at: Utc::now(),
+                    });
+                }
+
+                pools_with_history += 1;
+            }
+
+            if !all_snapshots.is_empty() {
+                let count = all_snapshots.len();
+                match self.pool_historical_service.save_pool_snapshots_batch(all_snapshots).await {
+                    Ok(inserted) => {
+                        tracing::info!(
+                            "✅ Pool backfill {:?}: saved {} snapshots for {} pools",
+                            chain, inserted, batch_data.len()
+                        );
+                        total_backfilled += count;
+                    }
+                    Err(e) => tracing::warn!("Pool backfill batch insert failed for {:?}: {:?}", chain, e),
+                }
+            }
+        }
+
+        Ok((total_backfilled, pools_with_history))
+    }
+
     pub async fn backfill_only(&self) -> Result<CollectionResult> {
         let start_time = Utc::now();
         tracing::info!("🔄 Starting backfill-only mode");
@@ -273,12 +563,15 @@ impl DailyCollectionWorker {
             protocols: None,
             operation_types: None,
             asset_categories: None,
+            token: None,
             min_liquidity: 0,
+            page: 1,
+            page_size: 100,
         };
-        
+
         let rates = self.aggregator.get_rates(&query).await?;
         tracing::info!("✅ Fetched {} rates", rates.len());
-        
+
         // Prepare all vaults for backfill
         let vaults_needing_backfill: Vec<_> = rates.iter()
             .map(|rate| {
@@ -346,12 +639,12 @@ impl DailyCollectionWorker {
         let mut backfilled_count = 0;
         let mut vaults_with_real_history = 0;
         
-        // Process vaults in parallel (10 concurrent tasks)
+        // Process vaults in parallel
         let results: Vec<_> = stream::iter(vaults.iter())
             .map(|(vault_id, rate)| async move {
                 self.backfill_single_vault(vault_id, rate).await
             })
-            .buffer_unordered(10)
+            .buffer_unordered(self.backfill_concurrency)
             .collect()
             .await;
         

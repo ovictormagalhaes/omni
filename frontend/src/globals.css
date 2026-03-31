@@ -23,21 +23,68 @@
     @apply bg-slate-800 text-white;
   }
 
-  /* Range slider styling */
+  /* Range slider base */
   input[type="range"] {
-    @apply appearance-none bg-transparent cursor-pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    width: 100%;
+    height: 20px;
   }
-  input[type="range"]::-webkit-slider-track {
-    @apply h-1.5 rounded-full bg-slate-700;
-  }
-  input[type="range"]::-webkit-slider-thumb {
-    @apply appearance-none w-4 h-4 rounded-full bg-omni-blue border-2 border-white shadow-glow-sm -mt-[5px];
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: 9999px;
+    background: #64748b;
   }
   input[type="range"]::-moz-range-track {
-    @apply h-1.5 rounded-full bg-slate-700;
+    height: 8px;
+    border-radius: 9999px;
+    background: #64748b;
   }
-  input[type="range"]::-moz-range-thumb {
-    @apply w-4 h-4 rounded-full bg-omni-blue border-2 border-white shadow-glow-sm;
+
+  /* Blue slider (default / lending) */
+  input[type="range"]::-webkit-slider-thumb,
+  input[type="range"].slider-blue::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #3b82f6;
+    border: 2px solid #ffffff;
+    margin-top: -6px;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  }
+  input[type="range"]::-moz-range-thumb,
+  input[type="range"].slider-blue::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #3b82f6;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  }
+
+  /* Emerald slider (liquidity pools) */
+  input[type="range"].slider-emerald::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #10b981;
+    border: 2px solid #ffffff;
+    margin-top: -6px;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  }
+  input[type="range"].slider-emerald::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #10b981;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
   }
 }
 

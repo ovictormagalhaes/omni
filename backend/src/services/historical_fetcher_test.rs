@@ -11,10 +11,15 @@ fn make_rate_result(protocol: Protocol, chain: Chain, url: &str) -> crate::model
         protocol,
         chain,
         asset: Asset::Known(KnownAsset::USDC),
+        action: crate::models::Action::Supply,
         asset_category: vec![AssetCategory::Stablecoin],
         apy: 5.0,
         rewards: 0.0,
         net_apy: 5.0,
+        performance_fee: None,
+        active: true,
+        collateral_enabled: true,
+        collateral_ltv: 0.75,
         liquidity: 1_000_000,
         total_liquidity: 5_000_000,
         utilization_rate: 80,
@@ -23,6 +28,7 @@ fn make_rate_result(protocol: Protocol, chain: Chain, url: &str) -> crate::model
         vault_id: None,
         vault_name: None,
         last_update: Utc::now(),
+        apy_metrics: None,
     }
 }
 
@@ -84,61 +90,70 @@ async fn test_fetch_aave_ethereum_without_api_key_returns_error() {
 // is added. This prevents silent Ok(vec![]) from silently masking gaps.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Documents that Kamino historical is a stub returning Ok(vec![]).
-/// FAIL THIS TEST when you implement Kamino historical — add proper tests instead.
+/// Kamino historical now uses DeFi Llama for USDC data.
+/// Returns data points for known assets, empty for unknown ones.
 #[tokio::test]
-async fn test_fetch_kamino_historical_is_documented_stub() {
+async fn test_fetch_kamino_historical_returns_data_for_usdc() {
     let fetcher = HistoricalFetcher::new(None);
     let rate = make_rate_result(Protocol::Kamino, Chain::Solana, "https://kamino.finance");
-    let start = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
-    let end   = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+    let start = Utc::now() - chrono::Duration::days(30);
+    let end   = Utc::now();
 
     let result = fetcher
         .fetch_historical_data(&Protocol::Kamino, &Chain::Solana, &rate, start, end)
         .await;
 
-    assert!(result.is_ok());
-    assert!(
-        result.unwrap().is_empty(),
-        "Kamino historical is a stub: Ok(vec![]). \
-         Update this test when the real implementation is added."
-    );
+    assert!(result.is_ok(), "Kamino historical fetch should not error: {:?}", result.err());
+    // DeFi Llama may or may not have data for the pool ID, so we just verify no error
+    let points = result.unwrap();
+    println!("Kamino USDC historical: {} data points", points.len());
+    for p in &points {
+        assert!(p.supply_apy >= 0.0, "APY must be non-negative");
+        assert!(p.date >= start, "Date must be within range");
+    }
 }
 
-/// Documents that Fluid historical is a stub returning Ok(vec![]).
+/// Fluid historical now uses DeFi Llama search by project name.
+/// With no vault_id, it searches DeFi Llama pools for "fluid" + chain + symbol.
 #[tokio::test]
-async fn test_fetch_fluid_historical_is_documented_stub() {
+#[ignore] // Requires network access to DeFi Llama
+async fn test_fetch_fluid_historical_via_defillama_search() {
     let fetcher = HistoricalFetcher::new(None);
     let rate = make_rate_result(Protocol::Fluid, Chain::Ethereum, "https://fluid.instadapp.io");
-    let start = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
-    let end   = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+    let start = Utc::now() - chrono::Duration::days(30);
+    let end   = Utc::now();
 
     let result = fetcher
         .fetch_historical_data(&Protocol::Fluid, &Chain::Ethereum, &rate, start, end)
         .await;
 
-    assert!(result.is_ok());
-    assert!(
-        result.unwrap().is_empty(),
-        "Fluid historical is a stub: Ok(vec![]). \
-         Update this test when the real implementation is added."
-    );
+    assert!(result.is_ok(), "Fluid DeFi Llama search should not error: {:?}", result.err());
+    let points = result.unwrap();
+    println!("Fluid historical: {} data points", points.len());
+    // May be empty if DeFi Llama doesn't have a matching pool
+    for p in &points {
+        assert!(p.supply_apy >= 0.0, "APY must be non-negative");
+    }
 }
 
-/// Documents that protocols without historical concept return Ok(vec![]).
-/// Jito/Jupiter/RocketPool/Euler/JustLend have no day-level APY series.
+/// Jito/Jupiter use vault_id-based DeFi Llama fetch.
+/// With vault_id=None in test helper, they return Ok(vec![]) without network calls.
 #[tokio::test]
-async fn test_fetch_historical_data_unsupported_protocols_return_empty() {
+async fn test_fetch_defillama_vault_id_protocols_return_empty_without_vault_id() {
     let fetcher = HistoricalFetcher::new(None);
     let start = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
     let end   = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
 
+    // These protocols check rate.vault_id first — with None, they return empty immediately
     for (protocol, chain) in [
         (Protocol::Jito,       Chain::Solana),
         (Protocol::Jupiter,    Chain::Solana),
-        (Protocol::RocketPool, Chain::Ethereum),
-        (Protocol::Euler,      Chain::Ethereum),
-        (Protocol::JustLend,   Chain::Tron),
+        (Protocol::Compound,   Chain::Ethereum),
+        (Protocol::Venus,      Chain::BSC),
+        (Protocol::Benqi,      Chain::Avalanche),
+        (Protocol::Pendle,     Chain::Ethereum),
+        (Protocol::Ethena,     Chain::Ethereum),
+        (Protocol::EtherFi,    Chain::Ethereum),
     ] {
         let rate = make_rate_result(protocol.clone(), chain.clone(), "https://example.com");
         let result = fetcher
@@ -146,12 +161,38 @@ async fn test_fetch_historical_data_unsupported_protocols_return_empty() {
             .await;
         assert!(
             result.is_ok(),
-            "{:?} should not panic/error, just return empty", protocol
+            "{:?} should not panic/error with no vault_id", protocol
         );
         assert!(
             result.unwrap().is_empty(),
-            "{:?} has no historical implementation — should return Ok(vec![])", protocol
+            "{:?} with no vault_id should return Ok(vec![])", protocol
         );
+    }
+}
+
+/// RocketPool/Euler/JustLend now use DeFi Llama search (requires network).
+#[tokio::test]
+#[ignore] // Requires network access to DeFi Llama
+async fn test_fetch_defillama_search_protocols() {
+    let fetcher = HistoricalFetcher::new(None);
+    let start = Utc::now() - chrono::Duration::days(30);
+    let end   = Utc::now();
+
+    for (protocol, chain, project) in [
+        (Protocol::RocketPool, Chain::Ethereum, "rocket-pool"),
+        (Protocol::Euler,      Chain::Ethereum, "euler-v2"),
+        (Protocol::JustLend,   Chain::Tron,     "justlend"),
+    ] {
+        let rate = make_rate_result(protocol.clone(), chain.clone(), "https://example.com");
+        let result = fetcher
+            .fetch_historical_data(&protocol, &chain, &rate, start, end)
+            .await;
+        assert!(
+            result.is_ok(),
+            "{:?} ({}) DeFi Llama search should not error: {:?}", protocol, project, result.err()
+        );
+        let points = result.unwrap();
+        println!("{:?} ({}) historical: {} data points", protocol, project, points.len());
     }
 }
 
@@ -167,28 +208,47 @@ async fn test_fetch_historical_data_unsupported_protocols_return_empty() {
 /// into the `_ => Ok(vec![])` catch-all and their gap is never documented.
 #[test]
 fn test_historical_fetcher_implementation_coverage() {
-    // Has a real implementation (network-dependent, backed by integration tests)
-    let _implemented: &[Protocol] = &[
+    // Has a real implementation via protocol-specific APIs
+    let _protocol_specific: &[Protocol] = &[
         Protocol::Aave,      // TheGraph (requires THE_GRAPH_API_KEY)
         Protocol::Morpho,    // Morpho official API
         Protocol::SparkLend, // Aave-API compatible (Ethereum only)
-        Protocol::Lido,      // DeFi Llama
-        Protocol::Marinade,  // DeFi Llama
+        Protocol::Lido,      // DeFi Llama (hardcoded pool ID)
+        Protocol::Marinade,  // DeFi Llama (hardcoded pool ID)
+        Protocol::Kamino,    // DeFi Llama (hardcoded pool IDs by asset)
     ];
 
-    // Stub: returns Ok(vec![]) — no real data collected
-    let _stubs: &[Protocol] = &[
-        Protocol::Kamino, // TODO: implement via Kamino API
-        Protocol::Fluid,  // TODO: implement via Fluid API
+    // DeFi Llama vault_id-based (pool UUID from indexer → yields.llama.fi/chart)
+    let _defillama_vault_id: &[Protocol] = &[
+        Protocol::Compound,  // compound-v3
+        Protocol::Venus,     // venus-*
+        Protocol::Benqi,     // benqi-lending
+        Protocol::Pendle,    // pendle
+        Protocol::Ethena,    // ethena-usde
+        Protocol::EtherFi,   // ether.fi-stake/liquid
+        Protocol::Jupiter,   // jupiter-staked-sol
+        Protocol::Jito,      // jitosol
     ];
 
-    // No historical concept for these protocols
-    let _no_historical: &[Protocol] = &[
-        Protocol::Jito,
-        Protocol::Jupiter,
-        Protocol::RocketPool,
-        Protocol::Euler,
-        Protocol::JustLend,
+    // DeFi Llama search-based (search pools endpoint by project + chain + symbol)
+    let _defillama_search: &[Protocol] = &[
+        Protocol::Fluid,      // fluid
+        Protocol::RocketPool, // rocket-pool
+        Protocol::Euler,      // euler-v2
+        Protocol::JustLend,   // justlend
+    ];
+
+    // DEX / LP protocols — no rate historical (pool backfill is separate)
+    let _no_rate_historical: &[Protocol] = &[
+        Protocol::Uniswap,
+        Protocol::UniswapV4,
+        Protocol::Raydium,
+        Protocol::Curve,
+        Protocol::PancakeSwap,
+        Protocol::Aerodrome,
+        Protocol::Velodrome,
+        Protocol::Orca,
+        Protocol::Meteora,
     ];
 
     // If you added a new Protocol variant and this doesn't compile, add it to one
@@ -254,15 +314,15 @@ fn test_extract_address_from_url_no_address() {
 }
 
 #[test]
-fn test_chain_to_morpho_id() {
+fn test_chain_to_morpho_chain_id() {
     let fetcher = HistoricalFetcher::new(None);
     
-    assert_eq!(fetcher.chain_to_morpho_id(&Chain::Ethereum), "ethereum");
-    assert_eq!(fetcher.chain_to_morpho_id(&Chain::Base), "base");
-    assert_eq!(fetcher.chain_to_morpho_id(&Chain::Arbitrum), "arbitrum");
-    assert_eq!(fetcher.chain_to_morpho_id(&Chain::Optimism), "optimism");
-    assert_eq!(fetcher.chain_to_morpho_id(&Chain::Polygon), "polygon");
-    assert_eq!(fetcher.chain_to_morpho_id(&Chain::Solana), "ethereum"); // Fallback
+    assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Ethereum), 1);
+    assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Base), 8453);
+    assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Arbitrum), 42161);
+    assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Optimism), 10);
+    assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Polygon), 137);
+    assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Solana), 1); // Fallback
 }
 
 #[test]

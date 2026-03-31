@@ -1,6 +1,11 @@
 import Logo from './Logo'
+import type { Tab } from '../App'
 
-export default function Footer() {
+interface FooterProps {
+  onNavigate: (tab: Tab) => void
+}
+
+export default function Footer({ onNavigate }: FooterProps) {
   return (
     <footer className="border-t border-slate-800/30 mt-auto">
       <div className="container mx-auto px-4 sm:px-6 py-8">
@@ -8,15 +13,15 @@ export default function Footer() {
           <div className="flex items-center gap-3">
             <Logo size="small" iconOnly />
             <div>
-              <p className="text-sm font-semibold text-slate-300">OMNI Protocol</p>
-              <p className="text-[11px] text-slate-600">Omnichain Lending Intelligence</p>
+              <p className="text-sm font-semibold text-slate-300">OMNI</p>
+              <p className="text-[11px] text-slate-600">DeFi Yield Intelligence</p>
             </div>
           </div>
 
           <div className="flex items-center gap-6">
-            <a href="#rates" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Rates</a>
-            <a href="#strategy" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Strategy</a>
-            <a href="#docs" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Docs</a>
+            <button onClick={() => onNavigate('rates')} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Earn</button>
+            <button onClick={() => onNavigate('pools')} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Liquidity</button>
+            <button onClick={() => onNavigate('strategy')} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Strategy</button>
           </div>
 
           <p className="text-[10px] text-slate-700">

@@ -1,9 +1,11 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
+use super::RateIndexer;
 
 
 const AAVE_API_URL: &str = "https://api.v3.aave.com/graphql";
@@ -13,6 +15,8 @@ const MARKET_ADDRESS_ARBITRUM: &str = "0x794a61358D6845594F94dc1DB02A252b5b4814a
 const MARKET_ADDRESS_BASE: &str = "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5";
 const MARKET_ADDRESS_ETHEREUM: &str = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
 const MARKET_ADDRESS_POLYGON: &str = "0x794a61358D6845594F94dc1DB02A252b5b4814aD";
+const MARKET_ADDRESS_OPTIMISM: &str = "0x794a61358D6845594F94dc1DB02A252b5b4814aD";
+const MARKET_ADDRESS_AVALANCHE: &str = "0x794a61358D6845594F94dc1DB02A252b5b4814aD";
 
 #[derive(Debug, Deserialize)]
 struct GraphQLResponse {
@@ -32,6 +36,7 @@ struct ResponseData {
 
 #[derive(Debug, Deserialize)]
 struct Market {
+    #[allow(dead_code)]
     name: String,
     reserves: Vec<ReserveData>,
 }
@@ -41,23 +46,30 @@ struct ReserveData {
     #[serde(rename = "underlyingToken")]
     underlying_token: Token,
     #[serde(rename = "supplyInfo")]
-    supply_info: Option<SupplyInfo>,
+    supply_info: SupplyInfo,
     #[serde(rename = "borrowInfo")]
     borrow_info: Option<BorrowInfo>,
     size: TokenAmount,
     #[serde(rename = "usdExchangeRate")]
+    #[allow(dead_code)]
     usd_exchange_rate: String,
+    #[serde(rename = "isFrozen")]
+    is_frozen: bool,
+    #[serde(rename = "isPaused")]
+    is_paused: bool,
 }
 
 #[derive(Debug, Deserialize)]
 struct Token {
     symbol: String,
     address: String,
+    #[allow(dead_code)]
     decimals: u32,
 }
 
 #[derive(Debug, Deserialize)]
 struct TokenAmount {
+    #[allow(dead_code)]
     amount: DecimalValue,
     usd: String,
 }
@@ -65,13 +77,23 @@ struct TokenAmount {
 #[derive(Debug, Deserialize)]
 struct SupplyInfo {
     apy: DecimalValue,
+    #[serde(rename = "canBeCollateral")]
+    can_be_collateral: bool,
+    #[serde(rename = "maxLTV")]
+    max_ltv: PercentValue,
 }
 
 #[derive(Debug, Deserialize)]
 struct BorrowInfo {
     apy: DecimalValue,
     #[serde(rename = "utilizationRate")]
-    utilization_rate: Option<PercentValue>,
+    utilization_rate: PercentValue,
+    #[serde(rename = "availableLiquidity")]
+    available_liquidity: TokenAmount,
+    #[serde(rename = "borrowingState")]
+    borrowing_state: String,
+    #[serde(rename = "borrowCapReached")]
+    borrow_cap_reached: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,7 +113,10 @@ pub struct AaveIndexer {
 impl AaveIndexer {
     pub fn new(_subgraph_arbitrum: String, _subgraph_base: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
         }
     }
 
@@ -103,7 +128,8 @@ impl AaveIndexer {
             Chain::Base => (8453, MARKET_ADDRESS_BASE),
             Chain::Ethereum => (1, MARKET_ADDRESS_ETHEREUM),
             Chain::Polygon => (137, MARKET_ADDRESS_POLYGON),
-            // Chains not supported by Aave
+            Chain::Optimism => (10, MARKET_ADDRESS_OPTIMISM),
+            Chain::Avalanche => (43114, MARKET_ADDRESS_AVALANCHE),
             _ => {
                 tracing::debug!("Aave doesn't support chain {:?}, skipping", chain);
                 return Ok(vec![]);
@@ -128,16 +154,26 @@ impl AaveIndexer {
                             }}
                             supplyInfo {{
                                 apy {{ value }}
+                                canBeCollateral
+                                maxLTV {{ value }}
                             }}
                             borrowInfo {{
                                 apy {{ value }}
                                 utilizationRate {{ value }}
+                                availableLiquidity {{
+                                    amount {{ value }}
+                                    usd
+                                }}
+                                borrowingState
+                                borrowCapReached
                             }}
                             size {{
                                 amount {{ value }}
                                 usd
                             }}
                             usdExchangeRate
+                            isFrozen
+                            isPaused
                         }}
                     }}
                 }}
@@ -185,29 +221,57 @@ impl AaveIndexer {
             // Capture the underlying asset address for URL generation
             let underlying_asset_address = reserve.underlying_token.address.clone();
 
-            let supply_apy = reserve.supply_info
-                .as_ref()
-                .map(|info| info.apy.value.parse::<f64>().unwrap_or(0.0) * 100.0) // Convert to percentage
-                .unwrap_or(0.0);
+            let supply_apy = reserve.supply_info.apy.value.parse::<f64>().unwrap_or(0.0) * 100.0;
 
             let borrow_apr = reserve.borrow_info
                 .as_ref()
-                .map(|info| info.apy.value.parse::<f64>().unwrap_or(0.0) * 100.0) // Convert to percentage
+                .map(|info| info.apy.value.parse::<f64>().unwrap_or(0.0) * 100.0)
                 .unwrap_or(0.0);
 
             let utilization_rate = reserve.borrow_info
                 .as_ref()
-                .and_then(|info| info.utilization_rate.as_ref())
-                .map(|ur| ur.value.parse::<f64>().unwrap_or(0.0) * 100.0) // Convert to percentage
+                .map(|info| info.utilization_rate.value.parse::<f64>().unwrap_or(0.0) * 100.0)
                 .unwrap_or(0.0);
 
             // Parse liquidity from size.usd (already in USD)
             let total_liquidity_usd = reserve.size.usd.parse::<f64>().unwrap_or(0.0);
             let total_liquidity = total_liquidity_usd.round() as u64;
 
-            // Calculate available liquidity: total * (1 - utilization_rate)
-            let utilization_decimal = utilization_rate / 100.0;
-            let available_liquidity = (total_liquidity_usd * (1.0 - utilization_decimal)).round() as u64;
+            // Use API-provided available liquidity, fallback to calculation
+            let available_liquidity = reserve.borrow_info
+                .as_ref()
+                .map(|info| info.available_liquidity.usd.parse::<f64>().unwrap_or(0.0).round() as u64)
+                .unwrap_or_else(|| {
+                    let utilization_decimal = utilization_rate / 100.0;
+                    (total_liquidity_usd * (1.0 - utilization_decimal)).round() as u64
+                });
+
+            // Determine active status from API fields
+            let is_frozen = reserve.is_frozen;
+            let is_paused = reserve.is_paused;
+            let supply_active = !is_frozen && !is_paused;
+
+            // borrowInfo is null = not borrowable at all
+            // borrowingState != ENABLED = borrowing disabled
+            let borrow_enabled = reserve.borrow_info
+                .as_ref()
+                .map(|info| info.borrowing_state == "ENABLED" && !info.borrow_cap_reached)
+                .unwrap_or(false);
+            let borrow_active = supply_active && borrow_enabled;
+
+            // Use real collateral data from the API
+            let collateral_enabled = reserve.supply_info.can_be_collateral;
+            let collateral_ltv = reserve.supply_info.max_ltv.value.parse::<f64>().unwrap_or(0.0);
+
+            if is_frozen {
+                tracing::debug!("Aave reserve {} on {:?} is frozen, marking inactive", symbol, chain);
+            }
+            if !borrow_enabled {
+                tracing::debug!("Aave reserve {} on {:?} borrowing disabled (borrowInfo={}, state={:?})",
+                    symbol, chain,
+                    reserve.borrow_info.is_some(),
+                    reserve.borrow_info.as_ref().map(|i| &i.borrowing_state));
+            }
 
             rates.push(ProtocolRate {
                 protocol: Protocol::Aave,
@@ -218,13 +282,13 @@ impl AaveIndexer {
                 borrow_apr: (borrow_apr * 100.0).round() / 100.0,
                 rewards: 0.0, // TODO: Implement Aave incentives fetching
                 performance_fee: None,
-                active: true,
-                collateral_enabled: true,  // Aave supply can be used as collateral
-                collateral_ltv: 0.75,      // Default LTV for Aave
+                active: supply_active,
+                collateral_enabled,
+                collateral_ltv,
                 available_liquidity,
                 total_liquidity,
                 utilization_rate,
-                ltv: 0.75, // Default LTV
+                ltv: collateral_ltv,
                 operation_type: OperationType::Lending,
                 vault_id: None,
                 vault_name: None,
@@ -232,28 +296,31 @@ impl AaveIndexer {
                 timestamp: Utc::now(),
             });
 
-            rates.push(ProtocolRate {
-                protocol: Protocol::Aave,
-                chain: chain.clone(),
-                asset,
-                action: Action::Borrow,
-                supply_apy: (supply_apy * 100.0).round() / 100.0,
-                borrow_apr: (borrow_apr * 100.0).round() / 100.0,
-                rewards: 0.0, // TODO: Implement Aave incentives fetching
-                performance_fee: None,
-                active: true,
-                collateral_enabled: false,  // Borrow action doesn't provide collateral
-                collateral_ltv: 0.0,
-                available_liquidity,
-                total_liquidity,
-                utilization_rate,
-                ltv: 0.75,
-                operation_type: OperationType::Lending,
-                vault_id: None,
-                vault_name: None,
-                underlying_asset: Some(underlying_asset_address),
-                timestamp: Utc::now(),
-            });
+            // Only emit borrow rate if borrowInfo exists (asset is borrowable in principle)
+            if reserve.borrow_info.is_some() {
+                rates.push(ProtocolRate {
+                    protocol: Protocol::Aave,
+                    chain: chain.clone(),
+                    asset,
+                    action: Action::Borrow,
+                    supply_apy: (supply_apy * 100.0).round() / 100.0,
+                    borrow_apr: (borrow_apr * 100.0).round() / 100.0,
+                    rewards: 0.0, // TODO: Implement Aave incentives fetching
+                    performance_fee: None,
+                    active: borrow_active,
+                    collateral_enabled: false,
+                    collateral_ltv: 0.0,
+                    available_liquidity,
+                    total_liquidity,
+                    utilization_rate,
+                    ltv: collateral_ltv,
+                    operation_type: OperationType::Lending,
+                    vault_id: None,
+                    vault_name: None,
+                    underlying_asset: Some(underlying_asset_address),
+                    timestamp: Utc::now(),
+                });
+            }
         }
 
         Ok(rates)
@@ -265,6 +332,8 @@ impl AaveIndexer {
             Chain::Base => "proto_base_v3",
             Chain::Ethereum => "proto_mainnet_v3",
             Chain::Polygon => "proto_polygon_v3",
+            Chain::Optimism => "proto_optimism_v3",
+            Chain::Avalanche => "proto_avalanche_v3",
             _ => return String::new(),
         };
 
@@ -278,6 +347,32 @@ impl AaveIndexer {
             // Fallback to generic market URL
             format!("https://app.aave.com/?marketName={}", market_name)
         }
+    }
+}
+
+#[async_trait]
+impl RateIndexer for AaveIndexer {
+    fn protocol(&self) -> Protocol {
+        Protocol::Aave
+    }
+
+    fn supported_chains(&self) -> Vec<Chain> {
+        vec![
+            Chain::Ethereum,
+            Chain::Arbitrum,
+            Chain::Base,
+            Chain::Polygon,
+            Chain::Optimism,
+            Chain::Avalanche,
+        ]
+    }
+
+    async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
+        self.fetch_rates(chain).await
+    }
+
+    fn rate_url(&self, rate: &ProtocolRate) -> String {
+        self.get_protocol_url(&rate.chain, rate.underlying_asset.as_deref())
     }
 }
 

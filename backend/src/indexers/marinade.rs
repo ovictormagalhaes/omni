@@ -1,8 +1,10 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
 use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
+use super::RateIndexer;
 
 // Marinade Finance - Solana Liquid Staking
 // Provides mSOL liquid staking token
@@ -10,9 +12,13 @@ use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType}
 #[derive(Debug, Deserialize)]
 struct MarinadeApyResponse {
     value: f64,
+    #[allow(dead_code)]
     end_time: String,
-    end_price: f64, 
+    #[allow(dead_code)]
+    end_price: f64,
+    #[allow(dead_code)]
     start_time: String,
+    #[allow(dead_code)]
     start_price: f64,
 }
 
@@ -24,7 +30,10 @@ pub struct MarinadeIndexer {
 impl MarinadeIndexer {
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
         }
     }
 
@@ -83,6 +92,25 @@ impl MarinadeIndexer {
 
     pub fn get_protocol_url(&self) -> String {
         "https://marinade.finance/".to_string()
+    }
+}
+
+#[async_trait]
+impl RateIndexer for MarinadeIndexer {
+    fn protocol(&self) -> Protocol {
+        Protocol::Marinade
+    }
+
+    fn supported_chains(&self) -> Vec<Chain> {
+        vec![Chain::Solana]
+    }
+
+    async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
+        self.fetch_rates(chain).await
+    }
+
+    fn rate_url(&self, _rate: &ProtocolRate) -> String {
+        self.get_protocol_url()
     }
 }
 

@@ -1,12 +1,15 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
+use super::RateIndexer;
 use chrono::Utc;
 
 #[derive(Debug, Clone)]
 pub struct JustLendIndexer {
     client: reqwest::Client,
+    #[allow(dead_code)]
     api_key: Option<String>,
 }
 
@@ -30,7 +33,10 @@ struct JustLendMarket {
 impl JustLendIndexer {
     pub fn new(api_key: Option<String>) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             api_key,
         }
     }
@@ -162,6 +168,25 @@ impl JustLendIndexer {
     }
 }
 
+#[async_trait]
+impl RateIndexer for JustLendIndexer {
+    fn protocol(&self) -> Protocol {
+        Protocol::JustLend
+    }
+
+    fn supported_chains(&self) -> Vec<Chain> {
+        vec![Chain::Tron]
+    }
+
+    async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
+        self.fetch_rates(chain).await
+    }
+
+    fn rate_url(&self, _rate: &ProtocolRate) -> String {
+        self.get_protocol_url()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,8 +217,59 @@ mod tests {
         let indexer = JustLendIndexer::new(None);
         let result = indexer.fetch_rates(&Chain::Ethereum).await;
         assert!(result.is_ok());
-        
+
         let rates = result.unwrap();
         assert_eq!(rates.len(), 0); // Should return empty for non-Tron chains
+    }
+
+    #[test]
+    fn test_parse_justlend_market() {
+        let json = serde_json::json!({
+            "contractAddress": "T9abc123",
+            "symbol": "jUSDT",
+            "supplyApy": 4.2,
+            "borrowApy": 6.5,
+            "totalSupply": 5000000.0,
+            "totalBorrows": 3000000.0,
+            "underlyingSymbol": "USDT"
+        });
+        let market: JustLendMarket = serde_json::from_value(json).unwrap();
+        assert_eq!(market.underlying_symbol, Some("USDT".to_string()));
+        assert_eq!(market.supply_apy, Some(4.2));
+        assert_eq!(market.borrow_apy, Some(6.5));
+        assert!((market.total_supply.unwrap() - 5_000_000.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_normalize_asset_known() {
+        assert!(JustLendIndexer::normalize_asset("USDT").is_some());
+        assert!(JustLendIndexer::normalize_asset("USDC").is_some());
+        assert!(JustLendIndexer::normalize_asset("TRX").is_some());
+        assert!(JustLendIndexer::normalize_asset("USDD").is_some());
+    }
+
+    #[test]
+    fn test_normalize_asset_btc_eth_aliases() {
+        let btc = JustLendIndexer::normalize_asset("BTC").unwrap();
+        let wbtc = JustLendIndexer::normalize_asset("WBTC").unwrap();
+        assert_eq!(btc, wbtc);
+
+        let eth = JustLendIndexer::normalize_asset("ETH").unwrap();
+        let weth = JustLendIndexer::normalize_asset("WETH").unwrap();
+        assert_eq!(eth, weth);
+    }
+
+    #[test]
+    fn test_normalize_asset_unknown() {
+        assert!(JustLendIndexer::normalize_asset("PEPE").is_none());
+        assert!(JustLendIndexer::normalize_asset("SHIB").is_none());
+    }
+
+    #[test]
+    fn test_utilization_rate_calculation() {
+        let total_supply = 5_000_000.0_f64;
+        let total_borrows = 3_000_000.0_f64;
+        let utilization = (total_borrows / total_supply) * 100.0;
+        assert!((utilization - 60.0).abs() < 0.001);
     }
 }

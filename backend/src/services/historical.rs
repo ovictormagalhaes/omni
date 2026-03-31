@@ -8,6 +8,7 @@ use crate::models::{RateSnapshot, RateResult, HistoricalQuery, BacktestStats, Pr
 
 #[derive(Clone)]
 pub struct HistoricalDataService {
+    db: Database,
     collection: Collection<RateSnapshot>,
     execution_records: Collection<WorkerExecutionRecord>,
 }
@@ -41,7 +42,7 @@ impl HistoricalDataService {
         Self::create_indexes(&collection).await?;
         Self::create_execution_indexes(&execution_records).await?;
         
-        Ok(Self { collection, execution_records })
+        Ok(Self { db, collection, execution_records })
     }
     
     /// Create database indexes for query optimization
@@ -142,20 +143,57 @@ impl HistoricalDataService {
         Ok(())
     }
     
-    /// Save multiple snapshots in batch (more efficient)
+    /// Save multiple snapshots in batch using parallel upserts with bounded concurrency.
+    /// Each snapshot is upserted (idempotent via unique index on vault_id+date+operation_type).
     pub async fn save_snapshots_batch(&self, rates: &[RateResult], date: DateTime<Utc>) -> Result<usize> {
+        if rates.is_empty() {
+            return Ok(0);
+        }
+
+        let day_start = Self::get_day_start(date);
+        let collection = self.collection.clone();
+
+        let upsert_futures: Vec<_> = rates.iter().map(|rate| {
+            let snapshot = RateSnapshot::from_rate_result(rate, day_start);
+            let coll = collection.clone();
+            async move {
+                let filter = doc! {
+                    "vault_id":       &snapshot.vault_id,
+                    "date":           snapshot.date,
+                    "operation_type": mongodb::bson::to_bson(&snapshot.operation_type)?,
+                };
+                let mut options = mongodb::options::ReplaceOptions::default();
+                options.upsert = Some(true);
+                match coll.replace_one(filter, &snapshot).with_options(options).await {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        // E11000 duplicate key = race condition, treat as success
+                        if let mongodb::error::ErrorKind::Write(
+                            mongodb::error::WriteFailure::WriteError(ref we)
+                        ) = *e.kind {
+                            if we.code == 11000 {
+                                return Ok(());
+                            }
+                        }
+                        Err(anyhow::anyhow!(e))
+                    }
+                }
+            }
+        }).collect();
+
+        let total = upsert_futures.len();
+        let stream = futures::stream::iter(upsert_futures).buffer_unordered(20);
+        futures::pin_mut!(stream);
+
         let mut saved_count = 0;
-        
-        for rate in rates {
-            if let Err(e) = self.save_snapshot(rate, date).await {
-                tracing::warn!("Failed to save snapshot for vault {}: {:?}", 
-                    rate.vault_id.as_deref().unwrap_or("unknown"), e);
-            } else {
-                saved_count += 1;
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(()) => saved_count += 1,
+                Err(e) => tracing::warn!("Failed to save snapshot: {:?}", e),
             }
         }
-        
-        tracing::info!("Saved {}/{} snapshots for date {}", saved_count, rates.len(), date);
+
+        tracing::info!("Saved {}/{} snapshots for date {}", saved_count, total, date);
         Ok(saved_count)
     }
     
@@ -173,6 +211,53 @@ impl HistoricalDataService {
     }
     
     /// Get the latest snapshot date for a vault
+    /// P2: Batch check which vault_ids have any snapshot data (1 query instead of N).
+    pub async fn get_vaults_with_data(&self, vault_ids: &[&str]) -> Result<std::collections::HashSet<String>> {
+        if vault_ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+
+        let ids: Vec<String> = self.collection
+            .distinct("vault_id", doc! { "vault_id": { "$in": vault_ids } })
+            .await?
+            .into_iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+
+        Ok(ids.into_iter().collect())
+    }
+
+    /// P2: Batch fetch latest net_apy for multiple vaults (1 aggregation instead of N*2 queries).
+    pub async fn get_latest_apys_batch(&self, vault_ids: &[String]) -> Result<std::collections::HashMap<String, f64>> {
+        if vault_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let pipeline = vec![
+            doc! { "$match": { "vault_id": { "$in": vault_ids } } },
+            doc! { "$sort": { "date": -1 } },
+            doc! { "$group": {
+                "_id": "$vault_id",
+                "latest_apy": { "$first": "$net_apy" },
+            }},
+        ];
+
+        let db = &self.db;
+        let mut cursor = db.collection::<mongodb::bson::Document>("rate_snapshots")
+            .aggregate(pipeline)
+            .await?;
+
+        let mut result = std::collections::HashMap::new();
+        while let Some(Ok(doc)) = cursor.next().await {
+            if let (Ok(id), Ok(apy)) = (doc.get_str("_id"), doc.get_f64("latest_apy")) {
+                result.insert(id.to_string(), apy);
+            }
+        }
+
+        tracing::debug!("Batch fetched latest APY for {} vaults", result.len());
+        Ok(result)
+    }
+
     pub async fn get_latest_snapshot_date(&self, vault_id: &str) -> Result<Option<DateTime<Utc>>> {
         let filter = doc! {
             "vault_id": vault_id,
@@ -232,7 +317,7 @@ impl HistoricalDataService {
             return Ok(0);
         }
         
-        let count = snapshots.len();
+        let _count = snapshots.len();
         
         // Use ordered=false to continue on duplicate key errors
         let options = mongodb::options::InsertManyOptions::builder()
@@ -261,15 +346,16 @@ impl HistoricalDataService {
         }
     }
     
-    /// Check if any snapshot exists for today
-    pub async fn has_snapshots_for_today(&self) -> Result<bool> {
-        let today = Self::get_day_start(Utc::now());
-        
+    /// Check if a successful worker execution record exists for today.
+    /// Only returns true when the full collection completed without errors,
+    /// so partial runs (crash, timeout) are safely retried on re-execution.
+    pub async fn has_successful_execution_for_today(&self) -> Result<bool> {
+        let today = Utc::now().format("%Y-%m-%d").to_string();
         let filter = doc! {
-            "date": today,
+            "collectionDate": &today,
+            "status": "success",
         };
-        
-        let count = self.collection.count_documents(filter).await?;
+        let count = self.execution_records.count_documents(filter).await?;
         Ok(count > 0)
     }
     
@@ -760,6 +846,7 @@ mod tests {
             vault_name: None,
             url: "https://app.aave.com/test".to_string(),
             operation_type: OperationType::Lending,
+            action: crate::models::Action::Supply,
             net_apy: 5.0,
             base_apy: 5.0,
             rewards_apy: 0.0,
@@ -777,8 +864,8 @@ mod tests {
     /// using `doc! { "date": { "$gte": start } }` silently return 0 results because
     /// BSON DateTime != BSON String — they are different types in the type system.
     ///
-    /// This test would have caught the bug where `has_snapshots_for_today()` always
-    /// returned `false`, making the worker re-collect indefinitely without saving data.
+    /// This test would have caught the bug where date-based queries silently returned
+    /// 0 results, making the worker re-collect indefinitely without saving data.
     #[test]
     fn test_rate_snapshot_date_is_bson_datetime_not_string() {
         let snapshot = make_test_snapshot();

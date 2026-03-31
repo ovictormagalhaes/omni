@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
+use super::RateIndexer;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GraphQLResponse {
@@ -73,7 +75,10 @@ pub struct EulerIndexer {
 impl EulerIndexer {
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             // Official Euler v2 subgraph on Goldsky (Ethereum Mainnet)
             graphql_url: "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-mainnet/latest/gn".to_string(),
         }
@@ -348,6 +353,25 @@ impl EulerIndexer {
         } else {
             "https://app.euler.finance/".to_string()
         }
+    }
+}
+
+#[async_trait]
+impl RateIndexer for EulerIndexer {
+    fn protocol(&self) -> Protocol {
+        Protocol::Euler
+    }
+
+    fn supported_chains(&self) -> Vec<Chain> {
+        vec![Chain::Ethereum]
+    }
+
+    async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
+        self.fetch_rates(chain).await
+    }
+
+    fn rate_url(&self, rate: &ProtocolRate) -> String {
+        self.get_protocol_url(rate.vault_id.as_deref())
     }
 }
 

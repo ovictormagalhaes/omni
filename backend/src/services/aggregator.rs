@@ -1,278 +1,280 @@
 use anyhow::Result;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
 
 use crate::{
     config::Config,
-    indexers::{AaveIndexer, KaminoIndexer, MorphoIndexer, FluidIndexer, SparkLendIndexer, JustLendIndexer, EulerIndexer, JupiterIndexer, LidoIndexer, MarinadeIndexer, JitoIndexer, RocketPoolIndexer},
+    indexers::{
+        RateIndexer, PoolIndexer,
+        AaveIndexer, KaminoIndexer, MorphoIndexer, FluidIndexer, SparkLendIndexer, JustLendIndexer,
+        EulerIndexer, JupiterIndexer, LidoIndexer, MarinadeIndexer, JitoIndexer, RocketPoolIndexer,
+        RaydiumIndexer, UniswapV3Indexer, UniswapV4Indexer, VenusIndexer,
+        PendleIndexer, EthenaIndexer, CurveIndexer,
+        PancakeSwapIndexer, AerodromeIndexer, VelodromeIndexer,
+        SushiSwapIndexer, CamelotIndexer, TraderJoeIndexer,
+        OrcaIndexer, MeteoraIndexer,
+        SkyIndexer, SiloIndexer, FraxEthIndexer, BalancerIndexer, MaverickIndexer,
+        AuraIndexer, YearnIndexer, GmxIndexer,
+    },
     models::*,
+    services::circuit_breaker::CircuitBreaker,
 };
 
+// ============================================================================
+// Public types used by collection_worker
+// ============================================================================
+
+/// Metadata captured per indexer task (timing + errors)
+#[derive(Debug, Clone)]
+pub struct IndexerTaskMeta {
+    pub protocol: Protocol,
+    pub chain: Chain,
+    pub items_found: usize,
+    pub duration_ms: i64,
+    pub error: Option<String>,
+}
+
+/// Result of get_rates: rates + per-task metadata
+pub struct RatesCollectionOutput {
+    pub rates: Vec<RateResult>,
+    pub task_meta: Vec<IndexerTaskMeta>,
+}
+
+/// Result of get_pools: pools + per-task metadata
+pub struct PoolsCollectionOutput {
+    pub pools: Vec<PoolResult>,
+    pub task_meta: Vec<IndexerTaskMeta>,
+}
+
+// ============================================================================
+// Registry-based aggregator
+// ============================================================================
+
 pub struct RateAggregator {
-    aave_indexer: AaveIndexer,
-    kamino_indexer: KaminoIndexer,
-    morpho_indexer: MorphoIndexer,
-    fluid_indexer: FluidIndexer,
-    sparklend_indexer: SparkLendIndexer,
-    justlend_indexer: JustLendIndexer,
-    euler_indexer: EulerIndexer,
-    jupiter_indexer: JupiterIndexer,
-    lido_indexer: LidoIndexer,
-    marinade_indexer: MarinadeIndexer,
-    jito_indexer: JitoIndexer,
-    rocketpool_indexer: RocketPoolIndexer,
+    rate_indexers: Vec<Arc<dyn RateIndexer>>,
+    pool_indexers: Vec<Arc<dyn PoolIndexer>>,
+    semaphore: Arc<Semaphore>,
+    indexer_timeout: Duration,
+    pub circuit_breaker: CircuitBreaker,
 }
 
 impl RateAggregator {
     pub fn new(config: Config) -> Self {
-        let aave_indexer = AaveIndexer::new(
-            config.aave_subgraph_arbitrum.clone(),
-            config.aave_subgraph_base.clone(),
-        );
+        // ---- Rate indexers ----
+        // NOTE: DeFiLlama-dependent indexers are temporarily disabled.
+        // They will be re-enabled once each has a direct data source.
+        // Disabled rate indexers: Compound, EtherFi, Benqi, Radiant, Convex, Stargate
+        let rate_indexers: Vec<Arc<dyn RateIndexer>> = vec![
+            Arc::new(AaveIndexer::new(
+                config.aave_subgraph_arbitrum.clone(),
+                config.aave_subgraph_base.clone(),
+            )),
+            Arc::new(KaminoIndexer::new(config.kamino_api_url.clone())),
+            Arc::new(MorphoIndexer::new(config.morpho_api_url.clone())),
+            Arc::new(FluidIndexer::new(config.fluid_api_url.clone())),
+            Arc::new(SparkLendIndexer::new()),
+            Arc::new(JustLendIndexer::new(config.trongrid_api_key.clone())),
+            Arc::new(EulerIndexer::new()),
+            Arc::new(JupiterIndexer::new()),
+            Arc::new(LidoIndexer::new()),
+            Arc::new(MarinadeIndexer::new()),
+            Arc::new(JitoIndexer::new()),
+            Arc::new(RocketPoolIndexer::new()),
+            // Arc::new(CompoundIndexer::new().with_cache(defillama_cache.clone())),
+            Arc::new(VenusIndexer::new()),
+            Arc::new(PendleIndexer::new()),
+            Arc::new(EthenaIndexer::new()),
+            // Arc::new(EtherFiIndexer::new().with_cache(defillama_cache.clone())),
+            // Arc::new(BenqiIndexer::new().with_cache(defillama_cache.clone())),
+            // Arc::new(RadiantIndexer::new().with_cache(defillama_cache.clone())),
+            Arc::new(SkyIndexer::new()),
+            Arc::new(SiloIndexer::new()),
+            Arc::new(FraxEthIndexer::new()),
+            Arc::new(AuraIndexer::new()),
+            // Arc::new(ConvexIndexer::new().with_cache(defillama_cache.clone())),
+            Arc::new(YearnIndexer::new()),
+            // Arc::new(StargateIndexer::new().with_cache(defillama_cache.clone())),
+            Arc::new(GmxIndexer::new()),
+        ];
 
-        let kamino_indexer = KaminoIndexer::new(config.kamino_api_url.clone());
-        let morpho_indexer = MorphoIndexer::new(config.morpho_api_url.clone());
-        let fluid_indexer = FluidIndexer::new(config.fluid_api_url.clone());
-        let sparklend_indexer = SparkLendIndexer::new();
-        let justlend_indexer = JustLendIndexer::new(config.trongrid_api_key.clone());
-        let euler_indexer = EulerIndexer::new();
-        let jupiter_indexer = JupiterIndexer::new();
-        let lido_indexer = LidoIndexer::new();
-        let marinade_indexer = MarinadeIndexer::new();
-        let jito_indexer = JitoIndexer::new();
-        let rocketpool_indexer = RocketPoolIndexer::new();
+        // ---- Pool indexers ----
+        // All pool indexers migrated to direct sources (no more DeFiLlama)
+        let pool_indexers: Vec<Arc<dyn PoolIndexer>> = vec![
+            Arc::new(RaydiumIndexer::new(config.raydium_api_url.clone())),
+            Arc::new(UniswapV3Indexer::new(config.the_graph_api_key.clone())),
+            Arc::new(UniswapV4Indexer::new()),
+            Arc::new(CurveIndexer::new()),
+            Arc::new(PancakeSwapIndexer::new(config.the_graph_api_key.clone())),
+            Arc::new(AerodromeIndexer::new(config.the_graph_api_key.clone())),
+            Arc::new(VelodromeIndexer::new(config.the_graph_api_key.clone())),
+            Arc::new(OrcaIndexer::new()),
+            Arc::new(MeteoraIndexer::new()),
+            Arc::new(SushiSwapIndexer::new(config.the_graph_api_key.clone())),
+            Arc::new(CamelotIndexer::new(config.the_graph_api_key.clone())),
+            Arc::new(TraderJoeIndexer::new(config.the_graph_api_key.clone())),
+            Arc::new(BalancerIndexer::new()),
+            Arc::new(MaverickIndexer::new()),
+        ];
 
         Self {
-            aave_indexer,
-            kamino_indexer,
-            morpho_indexer,
-            fluid_indexer,
-            sparklend_indexer,
-            justlend_indexer,
-            euler_indexer,
-            jupiter_indexer,
-            lido_indexer,
-            marinade_indexer,
-            jito_indexer,
-            rocketpool_indexer,
+            rate_indexers,
+            pool_indexers,
+            semaphore: Arc::new(Semaphore::new(config.max_concurrent_indexers)),
+            indexer_timeout: Duration::from_secs(config.indexer_timeout_secs),
+            circuit_breaker: CircuitBreaker::new(config.cb_failure_threshold, config.cb_cooldown_secs),
         }
     }
 
+    // ========================================================================
+    // Rate collection (lending/vault/staking)
+    // ========================================================================
+
     pub async fn get_rates(&self, query: &RateQuery) -> Result<Vec<RateResult>> {
+        let output = self.get_rates_with_meta(query).await?;
+        Ok(output.rates)
+    }
+
+    pub async fn get_rates_with_meta(&self, query: &RateQuery) -> Result<RatesCollectionOutput> {
         let target_chains = query.parse_chains().unwrap_or_else(|| Chain::all());
         let target_protocols = query.parse_protocols().unwrap_or_else(|| Protocol::all());
-        
+
         tracing::debug!("Target chains: {:?}, Target protocols: {:?}", target_chains, target_protocols);
 
-        // Fetch rates from all indexers in parallel
-        let mut tasks = Vec::new();
+        // Spawn one task per (indexer, chain) pair
+        type TaskResult = (Protocol, Chain, Result<Vec<ProtocolRate>>, u128);
+        let mut tasks: Vec<tokio::task::JoinHandle<TaskResult>> = Vec::new();
 
-        // Aave tasks
-        if target_protocols.contains(&Protocol::Aave) {
-            for chain in &target_chains {
-                if *chain != Chain::Solana {
-                    let indexer = self.aave_indexer.clone();
-                    let chain_clone = chain.clone();
-                    tasks.push(tokio::spawn(async move {
-                        indexer.fetch_rates(&chain_clone).await
-                    }));
+        for indexer in &self.rate_indexers {
+            let protocol = indexer.protocol();
+            if !target_protocols.contains(&protocol) {
+                continue;
+            }
+
+            for chain in indexer.supported_chains() {
+                if !target_chains.contains(&chain) {
+                    continue;
                 }
+
+                // Circuit breaker check
+                if self.circuit_breaker.should_skip(&protocol, &chain).await {
+                    tracing::debug!("⚡ Skipping {:?}/{:?} (circuit open)", protocol, chain);
+                    continue;
+                }
+
+                let idx = Arc::clone(indexer);
+                let sem = Arc::clone(&self.semaphore);
+                let c = chain.clone();
+                let timeout = self.indexer_timeout;
+
+                tasks.push(tokio::spawn(async move {
+                    let _permit = sem.acquire().await.expect("semaphore closed");
+                    let start = Instant::now();
+                    let result = match tokio::time::timeout(timeout, idx.fetch_rates(&c)).await {
+                        Ok(r) => r,
+                        Err(_) => Err(anyhow::anyhow!("indexer timeout after {}s", timeout.as_secs())),
+                    };
+                    let elapsed = start.elapsed().as_millis();
+                    (idx.protocol(), c, result, elapsed)
+                }));
             }
         }
 
-        // Kamino task
-        if target_protocols.contains(&Protocol::Kamino) && target_chains.contains(&Chain::Solana) {
-            let indexer = self.kamino_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates().await
-            }));
-        }
-
-        // Morpho task
-        if target_protocols.contains(&Protocol::Morpho) {
-            let indexer = self.morpho_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates().await
-            }));
-        }
-
-        // Fluid task
-        if target_protocols.contains(&Protocol::Fluid) && target_chains.contains(&Chain::Ethereum) {
-            let indexer = self.fluid_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates().await
-            }));
-        }
-
-         // SparkLend tasks
-        if target_protocols.contains(&Protocol::SparkLend) {
-            for chain in &[Chain::Ethereum] {
-                if target_chains.contains(chain) {
-                    let indexer = self.sparklend_indexer.clone();
-                    let chain_clone = chain.clone();
-                    tasks.push(tokio::spawn(async move {
-                        indexer.fetch_rates(&chain_clone).await
-                    }));
-                }
-            }
-        }
-
-        // JustLend task (Tron only)
-        if target_protocols.contains(&Protocol::JustLend) && target_chains.contains(&Chain::Tron) {
-            let indexer = self.justlend_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates(&Chain::Tron).await
-            }));
-        }
-
-        // Euler task (Ethereum only)
-        if target_protocols.contains(&Protocol::Euler) && target_chains.contains(&Chain::Ethereum) {
-            let indexer = self.euler_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates(&Chain::Ethereum).await
-            }));
-        }
-
-        // Jupiter task (Solana only)
-        if target_protocols.contains(&Protocol::Jupiter) && target_chains.contains(&Chain::Solana) {
-            let indexer = self.jupiter_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates(&Chain::Solana).await
-            }));
-        }
-
-        // Lido tasks (Ethereum + Solana)
-        if target_protocols.contains(&Protocol::Lido) {
-            for chain in &target_chains {
-                if *chain == Chain::Ethereum || *chain == Chain::Solana {
-                    let indexer = self.lido_indexer.clone();
-                    let chain_clone = chain.clone();
-                    tasks.push(tokio::spawn(async move {
-                        indexer.fetch_rates(&chain_clone).await
-                    }));
-                }
-            }
-        }
-
-        // Marinade task (Solana only)
-        if target_protocols.contains(&Protocol::Marinade) && target_chains.contains(&Chain::Solana) {
-            let indexer = self.marinade_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates(&Chain::Solana).await
-            }));
-        }
-
-        // Jito task (Solana only)
-        if target_protocols.contains(&Protocol::Jito) && target_chains.contains(&Chain::Solana) {
-            let indexer = self.jito_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates(&Chain::Solana).await
-            }));
-        }
-
-        // Rocket Pool task (Ethereum only)
-        if target_protocols.contains(&Protocol::RocketPool) && target_chains.contains(&Chain::Ethereum) {
-            let indexer = self.rocketpool_indexer.clone();
-            tasks.push(tokio::spawn(async move {
-                indexer.fetch_rates(&Chain::Ethereum).await
-            }));
-        }
-
-        // Wait for all tasks
+        // Collect results + metadata
         let mut all_rates = Vec::new();
-        tracing::debug!("Waiting for {} indexer tasks", tasks.len());
+        let mut task_meta = Vec::new();
+        tracing::debug!("Waiting for {} rate indexer tasks", tasks.len());
+
         for task in tasks {
             match task.await {
-                Ok(Ok(rates)) => {
-                    tracing::debug!("Indexer returned {} rates", rates.len());
+                Ok((protocol, chain, Ok(rates), elapsed_ms)) => {
+                    tracing::debug!("{:?}/{:?} returned {} rates in {}ms", protocol, chain, rates.len(), elapsed_ms);
+                    self.circuit_breaker.record_success(&protocol, &chain).await;
+                    task_meta.push(IndexerTaskMeta {
+                        protocol,
+                        chain,
+                        items_found: rates.len(),
+                        duration_ms: elapsed_ms as i64,
+                        error: None,
+                    });
                     all_rates.extend(rates);
-                },
-                Ok(Err(e)) => tracing::error!("Indexer error: {:?}", e),
+                }
+                Ok((protocol, chain, Err(e), elapsed_ms)) => {
+                    tracing::error!("{:?}/{:?} failed in {}ms: {:?}", protocol, chain, elapsed_ms, e);
+                    self.circuit_breaker.record_failure(&protocol, &chain).await;
+                    task_meta.push(IndexerTaskMeta {
+                        protocol,
+                        chain,
+                        items_found: 0,
+                        duration_ms: elapsed_ms as i64,
+                        error: Some(format!("{:?}", e)),
+                    });
+                }
                 Err(e) => tracing::error!("Task join error: {:?}", e),
             }
         }
-        
+
         tracing::debug!("Total rates collected: {}", all_rates.len());
 
-        // Filter by asset, action, chain, operation_type, asset_category, and minimum liquidity
+        // Filter by query params
         let target_operation_types = query.parse_operation_types();
         let target_asset_categories = query.parse_asset_categories();
-        
+
         let filtered_rates: Vec<_> = all_rates
             .into_iter()
             .filter(|r| {
-                // Filter by asset (comma-separated list of symbols)
                 if let Some(ref target_assets) = query.parse_assets() {
                     if !target_assets.contains(&r.asset.symbol().to_uppercase()) {
                         return false;
                     }
                 }
-                
-                // Filter by action
                 if let Some(ref action) = query.action {
                     if &r.action != action {
                         return false;
                     }
                 }
-                
-                // Filter by operation_type (lending, vault)
                 if let Some(ref operation_types) = target_operation_types {
                     if !operation_types.contains(&r.operation_type) {
                         return false;
                     }
                 }
-
-                // Filter by asset_category (usd-based, btc-based, eth-based)
                 if let Some(ref asset_categories) = target_asset_categories {
                     let asset_cats = r.asset.category();
                     if !asset_cats.iter().any(|cat| asset_categories.contains(cat)) {
                         return false;
                     }
                 }
-                
-                // Filter by chain (if specified)
                 if !target_chains.contains(&r.chain) {
                     return false;
                 }
-                
-                // Filter inactive vaults
                 if !r.active {
                     return false;
                 }
-                
-                // Filter by minimum liquidity (default: 100k USD, ignore 0 liquidity)
                 if r.available_liquidity == 0 || r.available_liquidity < query.min_liquidity {
                     return false;
                 }
-                
                 true
             })
             .collect();
-        
+
         tracing::debug!("Filtered rates: {}", filtered_rates.len());
 
-        // Convert to RateResult
+        // Build URL via trait and convert to RateResult
+        let rate_indexer_map: std::collections::HashMap<Protocol, &Arc<dyn RateIndexer>> =
+            self.rate_indexers.iter().map(|i| (i.protocol(), i)).collect();
+
         let results: Vec<RateResult> = filtered_rates
             .into_iter()
             .map(|rate| {
-                // Use the appropriate rate based on action
                 let apy = match rate.action {
                     Action::Supply => rate.supply_apy,
                     Action::Borrow => rate.borrow_apr,
                 };
 
-                let url = match rate.protocol {
-                    Protocol::Aave => self.aave_indexer.get_protocol_url(&rate.chain, rate.underlying_asset.as_deref()),
-                    Protocol::Kamino => self.kamino_indexer.get_protocol_url(),
-                    Protocol::Morpho => self.morpho_indexer.get_protocol_url(&rate.chain, rate.vault_id.as_deref()),
-                    Protocol::Fluid => self.fluid_indexer.get_protocol_url(),
-                    Protocol::SparkLend => self.sparklend_indexer.get_protocol_url(&rate.chain, rate.underlying_asset.as_deref()),
-                    Protocol::JustLend => self.justlend_indexer.get_protocol_url(),
-                    Protocol::Euler => self.euler_indexer.get_protocol_url(rate.vault_id.as_deref()),
-                    Protocol::Jupiter => self.jupiter_indexer.get_protocol_url(),
-                    Protocol::Lido => self.lido_indexer.get_protocol_url(),
-                    Protocol::Marinade => self.marinade_indexer.get_protocol_url(),
-                    Protocol::Jito => self.jito_indexer.get_protocol_url(),
-                    Protocol::RocketPool => self.rocketpool_indexer.get_protocol_url(),
-                };
+                let url = rate_indexer_map
+                    .get(&rate.protocol)
+                    .map(|idx| idx.rate_url(&rate))
+                    .unwrap_or_default();
 
                 RateResult {
                     protocol: rate.protocol,
@@ -295,12 +297,168 @@ impl RateAggregator {
                     vault_name: rate.vault_name,
                     url,
                     last_update: rate.timestamp,
-                    apy_metrics: None, // No historical APY data from real-time aggregator
+                    apy_metrics: None,
                 }
             })
             .collect();
 
-        Ok(results)
+        Ok(RatesCollectionOutput { rates: results, task_meta })
+    }
+
+    // ========================================================================
+    // Pool collection (DEX/LP)
+    // ========================================================================
+
+    pub async fn get_pools(&self, query: &PoolQuery) -> Result<Vec<PoolResult>> {
+        let output = self.get_pools_with_meta(query).await?;
+        Ok(output.pools)
+    }
+
+    pub async fn get_pools_with_meta(&self, query: &PoolQuery) -> Result<PoolsCollectionOutput> {
+        let target_chains = query.parse_chains().unwrap_or_else(|| Chain::all());
+        let target_protocols = query.parse_protocols().unwrap_or_else(|| Protocol::all());
+
+        type TaskResult = (Protocol, Chain, Result<Vec<PoolRate>>, u128);
+        let mut tasks: Vec<tokio::task::JoinHandle<TaskResult>> = Vec::new();
+
+        for indexer in &self.pool_indexers {
+            let protocol = indexer.protocol();
+            if !target_protocols.contains(&protocol) {
+                continue;
+            }
+
+            for chain in indexer.supported_chains() {
+                if !target_chains.contains(&chain) {
+                    continue;
+                }
+
+                if self.circuit_breaker.should_skip(&protocol, &chain).await {
+                    tracing::debug!("⚡ Skipping pool {:?}/{:?} (circuit open)", protocol, chain);
+                    continue;
+                }
+
+                let idx = Arc::clone(indexer);
+                let sem = Arc::clone(&self.semaphore);
+                let c = chain.clone();
+                let timeout = self.indexer_timeout;
+
+                tasks.push(tokio::spawn(async move {
+                    let _permit = sem.acquire().await.expect("semaphore closed");
+                    let start = Instant::now();
+                    let result = match tokio::time::timeout(timeout, idx.fetch_pools(&c)).await {
+                        Ok(r) => r,
+                        Err(_) => Err(anyhow::anyhow!("pool indexer timeout after {}s", timeout.as_secs())),
+                    };
+                    let elapsed = start.elapsed().as_millis();
+                    (idx.protocol(), c, result, elapsed)
+                }));
+            }
+        }
+
+        // Collect results
+        tracing::debug!("Waiting for {} pool indexer tasks", tasks.len());
+        let mut all_pool_rates = Vec::new();
+        let mut pool_task_meta = Vec::new();
+
+        for task in tasks {
+            match task.await {
+                Ok((protocol, chain, Ok(rates), elapsed_ms)) => {
+                    tracing::debug!("{:?}/{:?} returned {} pools in {}ms", protocol, chain, rates.len(), elapsed_ms);
+                    self.circuit_breaker.record_success(&protocol, &chain).await;
+                    pool_task_meta.push(IndexerTaskMeta {
+                        protocol,
+                        chain,
+                        items_found: rates.len(),
+                        duration_ms: elapsed_ms as i64,
+                        error: None,
+                    });
+                    all_pool_rates.extend(rates);
+                }
+                Ok((protocol, chain, Err(e), elapsed_ms)) => {
+                    tracing::error!("{:?}/{:?} pool fetch failed in {}ms: {:?}", protocol, chain, elapsed_ms, e);
+                    self.circuit_breaker.record_failure(&protocol, &chain).await;
+                    pool_task_meta.push(IndexerTaskMeta {
+                        protocol,
+                        chain,
+                        items_found: 0,
+                        duration_ms: elapsed_ms as i64,
+                        error: Some(format!("{:?}", e)),
+                    });
+                }
+                Err(e) => tracing::error!("Pool task join error: {:?}", e),
+            }
+        }
+
+        tracing::debug!("Total pool rates collected: {}", all_pool_rates.len());
+
+        // Build URL via trait and convert to PoolResult
+        let pool_indexer_map: std::collections::HashMap<Protocol, &Arc<dyn PoolIndexer>> =
+            self.pool_indexers.iter().map(|i| (i.protocol(), i)).collect();
+
+        // Filter and convert
+        let cats0 = query.parse_asset_categories_0();
+        let cats1 = query.parse_asset_categories_1();
+        let target_pool_type = query.parse_pool_type();
+        let token_filter = query.token.as_ref().map(|t| t.to_uppercase());
+        let pair_filter = query.pair.as_ref().map(|p| p.to_uppercase());
+
+        let mut results: Vec<PoolResult> = all_pool_rates
+            .into_iter()
+            .map(|rate| {
+                let url = pool_indexer_map
+                    .get(&rate.protocol)
+                    .map(|idx| idx.pool_url(&rate))
+                    .unwrap_or_default();
+                rate.to_result(url)
+            })
+            .filter(|r| {
+                if (r.tvl_usd as u64) < query.min_tvl {
+                    return false;
+                }
+                // Two-sided category filter (same logic as build_pool_filter)
+                match (&cats0, &cats1) {
+                    (Some(c0), Some(c1)) => {
+                        let t0_in_c0 = r.token0_categories.iter().any(|c: &AssetCategory| c0.contains(c));
+                        let t1_in_c1 = r.token1_categories.iter().any(|c: &AssetCategory| c1.contains(c));
+                        let t0_in_c1 = r.token0_categories.iter().any(|c: &AssetCategory| c1.contains(c));
+                        let t1_in_c0 = r.token1_categories.iter().any(|c: &AssetCategory| c0.contains(c));
+                        if !((t0_in_c0 && t1_in_c1) || (t0_in_c1 && t1_in_c0)) {
+                            return false;
+                        }
+                    }
+                    (Some(cats), None) | (None, Some(cats)) => {
+                        let has_match = r.token0_categories.iter().any(|c: &AssetCategory| cats.contains(c))
+                            || r.token1_categories.iter().any(|c: &AssetCategory| cats.contains(c));
+                        if !has_match {
+                            return false;
+                        }
+                    }
+                    (None, None) => {}
+                }
+                if let Some(ref pt) = target_pool_type {
+                    if &r.pool_type != pt {
+                        return false;
+                    }
+                }
+                if let Some(ref token) = token_filter {
+                    if r.token0.to_uppercase() != *token && r.token1.to_uppercase() != *token {
+                        return false;
+                    }
+                }
+                if let Some(ref pair) = pair_filter {
+                    let pair_upper = r.pair.to_uppercase();
+                    let pair_reversed = format!("{}/{}", r.token1.to_uppercase(), r.token0.to_uppercase());
+                    if pair_upper != *pair && pair_reversed != *pair {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect();
+
+        results.sort_by(|a, b| b.fee_apr_24h.partial_cmp(&a.fee_apr_24h).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(PoolsCollectionOutput { pools: results, task_meta: pool_task_meta })
     }
 }
 

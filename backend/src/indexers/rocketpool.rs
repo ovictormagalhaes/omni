@@ -1,8 +1,10 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
 use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
+use super::RateIndexer;
 
 // Rocket Pool - Decentralized Ethereum Staking
 // Provides rETH liquid staking token
@@ -21,7 +23,10 @@ pub struct RocketPoolIndexer {
 impl RocketPoolIndexer {
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
         }
     }
 
@@ -88,6 +93,25 @@ impl RocketPoolIndexer {
 
     pub fn get_protocol_url(&self) -> String {
         "https://rocketpool.net/".to_string()
+    }
+}
+
+#[async_trait]
+impl RateIndexer for RocketPoolIndexer {
+    fn protocol(&self) -> Protocol {
+        Protocol::RocketPool
+    }
+
+    fn supported_chains(&self) -> Vec<Chain> {
+        vec![Chain::Ethereum]
+    }
+
+    async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {
+        self.fetch_rates(chain).await
+    }
+
+    fn rate_url(&self, _rate: &ProtocolRate) -> String {
+        self.get_protocol_url()
     }
 }
 

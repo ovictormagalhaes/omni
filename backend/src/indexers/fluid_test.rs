@@ -6,10 +6,11 @@ mod tests {
     #[test]
     fn test_get_protocol_url() {
         let indexer = FluidIndexer::new("https://api.fluid.instadapp.io".to_string());
-        
+        let usdc = Asset::Known(KnownAsset::USDC);
+
         assert_eq!(
-            indexer.get_protocol_url(),
-            "https://fluid.instadapp.io/"
+            indexer.get_protocol_url(&Chain::Ethereum, &usdc),
+            "https://fluid.io/lending/1/USDC"
         );
     }
 
@@ -69,11 +70,12 @@ mod tests {
     #[test]
     fn test_fluid_ethereum_only() {
         let indexer = FluidIndexer::new("https://api.fluid.instadapp.io".to_string());
-        
-        // Fluid only supports Ethereum
-        let url = indexer.get_protocol_url();
-        assert!(url.contains("fluid.instadapp.io"), "URL should contain fluid.instadapp.io");
-        
+        let usdc = Asset::Known(KnownAsset::USDC);
+
+        // Fluid supports Ethereum
+        let url = indexer.get_protocol_url(&Chain::Ethereum, &usdc);
+        assert!(url.contains("fluid.io/lending"), "URL should contain fluid.io/lending");
+
         println!("✅ Fluid Ethereum-only test passed");
     }
 
