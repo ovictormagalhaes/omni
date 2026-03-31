@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Pendle Finance - Official API V2
@@ -64,7 +64,10 @@ impl PendleIndexer {
             _ => return Ok(vec![]),
         };
 
-        tracing::info!("[Pendle] Fetching markets for chain {} from official API", chain_id);
+        tracing::info!(
+            "[Pendle] Fetching markets for chain {} from official API",
+            chain_id
+        );
 
         let url = format!(
             "https://api-v2.pendle.finance/core/v1/{}/markets?limit=100&order_by=liquidity:1",
@@ -93,7 +96,9 @@ impl PendleIndexer {
             }
 
             // Extract underlying asset symbol
-            let symbol = market.underlying_asset.as_ref()
+            let symbol = market
+                .underlying_asset
+                .as_ref()
                 .and_then(|a| a.symbol.as_ref())
                 .or_else(|| market.pt.as_ref().and_then(|p| p.symbol.as_ref()))
                 .map(|s| {

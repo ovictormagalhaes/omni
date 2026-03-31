@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Venus Protocol - Official API
@@ -69,14 +69,19 @@ impl VenusIndexer {
             _ => return Ok(vec![]),
         };
 
-        tracing::info!("[Venus] Fetching markets for chainId {} from official API", chain_id);
+        tracing::info!(
+            "[Venus] Fetching markets for chainId {} from official API",
+            chain_id
+        );
 
         let url = format!(
             "https://api.venus.io/markets/core-pool?chainId={}&limit=100",
             chain_id
         );
 
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .timeout(std::time::Duration::from_secs(30))
             .send()
             .await?;
@@ -93,22 +98,35 @@ impl VenusIndexer {
             let supply_apy = market.supply_apy.unwrap_or(0.0);
             let borrow_apy = market.borrow_apy.unwrap_or(0.0);
 
-            let supply_reward: f64 = market.supply_xvs_apr.as_ref()
+            let supply_reward: f64 = market
+                .supply_xvs_apr
+                .as_ref()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0.0);
-            let borrow_reward: f64 = market.borrow_xvs_apr.as_ref()
+            let borrow_reward: f64 = market
+                .borrow_xvs_apr
+                .as_ref()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0.0);
 
-            let total_supply_usd: f64 = market.total_supply_cents.as_ref()
+            let total_supply_usd: f64 = market
+                .total_supply_cents
+                .as_ref()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(0.0) / 100.0; // cents to USD
-            let total_borrow_usd: f64 = market.total_borrow_cents.as_ref()
+                .unwrap_or(0.0)
+                / 100.0; // cents to USD
+            let total_borrow_usd: f64 = market
+                .total_borrow_cents
+                .as_ref()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(0.0) / 100.0;
-            let liquidity_usd: f64 = market.liquidity_cents.as_ref()
+                .unwrap_or(0.0)
+                / 100.0;
+            let liquidity_usd: f64 = market
+                .liquidity_cents
+                .as_ref()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(0.0) / 100.0;
+                .unwrap_or(0.0)
+                / 100.0;
 
             if total_supply_usd < 10000.0 {
                 continue;
@@ -118,7 +136,9 @@ impl VenusIndexer {
             }
 
             // LTV from collateralFactorMantissa (18 decimals, e.g. 750000000000000000 = 75%)
-            let ltv = market.collateral_factor.as_ref()
+            let ltv = market
+                .collateral_factor
+                .as_ref()
                 .and_then(|s| s.parse::<f64>().ok())
                 .map(|v| v / 1e18)
                 .unwrap_or(0.0);
@@ -156,7 +176,8 @@ impl VenusIndexer {
             });
 
             // Borrow
-            if market.is_borrowable.unwrap_or(false) && (borrow_apy > 0.0 || total_borrow_usd > 0.0) {
+            if market.is_borrowable.unwrap_or(false) && (borrow_apy > 0.0 || total_borrow_usd > 0.0)
+            {
                 rates.push(ProtocolRate {
                     protocol: Protocol::Venus,
                     chain: chain.clone(),
@@ -182,7 +203,12 @@ impl VenusIndexer {
             }
         }
 
-        tracing::info!("[Venus] Fetched {} rates for {:?} (from {} markets)", rates.len(), chain, data.result.len());
+        tracing::info!(
+            "[Venus] Fetched {} rates for {:?} (from {} markets)",
+            rates.len(),
+            chain,
+            data.result.len()
+        );
         Ok(rates)
     }
 
@@ -246,16 +272,21 @@ mod tests {
         assert_eq!(market.can_be_collateral, Some(true));
 
         // LTV from mantissa: 750000000000000000 / 1e18 = 0.75
-        let ltv = market.collateral_factor.as_ref()
+        let ltv = market
+            .collateral_factor
+            .as_ref()
             .and_then(|s| s.parse::<f64>().ok())
             .map(|v| v / 1e18)
             .unwrap_or(0.0);
         assert!((ltv - 0.75).abs() < 0.001);
 
         // Cents to USD conversion
-        let supply_usd: f64 = market.total_supply_cents.as_ref()
+        let supply_usd: f64 = market
+            .total_supply_cents
+            .as_ref()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(0.0) / 100.0;
+            .unwrap_or(0.0)
+            / 100.0;
         assert!((supply_usd - 50_000_000.0).abs() < 0.01);
     }
 
@@ -315,9 +346,12 @@ mod tests {
             }]
         });
         let resp: VenusResponse = serde_json::from_value(json).unwrap();
-        let supply_usd: f64 = resp.result[0].total_supply_cents.as_ref()
+        let supply_usd: f64 = resp.result[0]
+            .total_supply_cents
+            .as_ref()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(0.0) / 100.0;
+            .unwrap_or(0.0)
+            / 100.0;
         assert!(supply_usd < 10000.0, "Should be filtered out as too small");
     }
 

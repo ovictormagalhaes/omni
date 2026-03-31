@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 const METEORA_API_URL: &str = "https://dlmm-api.meteora.ag/pair/all_with_pagination";
 

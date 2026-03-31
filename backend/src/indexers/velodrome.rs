@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 // ============================================================================
 // Velodrome — The Graph Subgraph (Solidly fork on Optimism)
@@ -193,17 +193,22 @@ impl VelodromeIndexer {
         self.execute_query(url, &query, false).await
     }
 
-    async fn execute_query(&self, url: &str, query: &serde_json::Value, is_solidly: bool) -> Result<Vec<PoolRate>> {
-        let http_response = self.client
-            .post(url)
-            .json(query)
-            .send()
-            .await?;
+    async fn execute_query(
+        &self,
+        url: &str,
+        query: &serde_json::Value,
+        is_solidly: bool,
+    ) -> Result<Vec<PoolRate>> {
+        let http_response = self.client.post(url).json(query).send().await?;
 
         let status = http_response.status();
         if !status.is_success() {
             let body = http_response.text().await.unwrap_or_default();
-            tracing::warn!("[Velodrome] HTTP {} : {}", status, &body[..body.len().min(300)]);
+            tracing::warn!(
+                "[Velodrome] HTTP {} : {}",
+                status,
+                &body[..body.len().min(300)]
+            );
             return Ok(vec![]);
         }
 
@@ -211,7 +216,11 @@ impl VelodromeIndexer {
         let response: GraphQLResponse = match serde_json::from_str(&body) {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!("[Velodrome] Failed to parse response: {} — body: {}", e, &body[..body.len().min(300)]);
+                tracing::warn!(
+                    "[Velodrome] Failed to parse response: {} — body: {}",
+                    e,
+                    &body[..body.len().min(300)]
+                );
                 return Ok(vec![]);
             }
         };
@@ -250,7 +259,9 @@ impl VelodromeIndexer {
         let token1 = Asset::from_symbol(&pair.token1.symbol, "Velodrome");
 
         // TVL
-        let tvl = pair.total_value_locked_usd.as_deref()
+        let tvl = pair
+            .total_value_locked_usd
+            .as_deref()
             .or(pair.reserve_usd.as_deref())
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(0.0);
@@ -267,7 +278,9 @@ impl VelodromeIndexer {
         };
 
         // Fee tier
-        let fee_rate_bps = pair.fee.as_deref()
+        let fee_rate_bps = pair
+            .fee
+            .as_deref()
             .or(pair.fee_tier.as_deref())
             .and_then(|s| {
                 let val: f64 = s.parse().ok()?;
@@ -292,14 +305,32 @@ impl VelodromeIndexer {
 
         // 24h metrics
         let (fees_24h, volume_24h, fee_apr_24h) = if let Some(day) = day_data.first() {
-            let fees: f64 = day.fees_usd.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let vol: f64 = day.volume_usd.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let day_tvl: f64 = day.reserve_usd.as_deref()
+            let fees: f64 = day
+                .fees_usd
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.0);
+            let vol: f64 = day
+                .volume_usd
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.0);
+            let day_tvl: f64 = day
+                .reserve_usd
+                .as_deref()
                 .or(day.tvl_usd.as_deref())
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(tvl);
-            let actual_fees = if fees > 0.0 { fees } else { vol * fee_rate_bps as f64 / 10000.0 };
-            let apr = if day_tvl > 0.0 { (actual_fees * 365.0 / day_tvl) * 100.0 } else { 0.0 };
+            let actual_fees = if fees > 0.0 {
+                fees
+            } else {
+                vol * fee_rate_bps as f64 / 10000.0
+            };
+            let apr = if day_tvl > 0.0 {
+                (actual_fees * 365.0 / day_tvl) * 100.0
+            } else {
+                0.0
+            };
             (actual_fees, vol, apr)
         } else {
             (0.0, 0.0, 0.0)
@@ -308,32 +339,56 @@ impl VelodromeIndexer {
         // 7-day averages — extrapolate to 7 days when fewer days of data are available
         let (fees_7d, volume_7d, fee_apr_7d) = if !day_data.is_empty() {
             let days = day_data.len() as f64;
-            let total_fees: f64 = day_data.iter()
+            let total_fees: f64 = day_data
+                .iter()
                 .map(|d| {
-                    let f = d.fees_usd.as_deref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
-                    if f > 0.0 { f } else {
-                        let v = d.volume_usd.as_deref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                    let f = d
+                        .fees_usd
+                        .as_deref()
+                        .and_then(|s| s.parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    if f > 0.0 {
+                        f
+                    } else {
+                        let v = d
+                            .volume_usd
+                            .as_deref()
+                            .and_then(|s| s.parse::<f64>().ok())
+                            .unwrap_or(0.0);
                         v * fee_rate_bps as f64 / 10000.0
                     }
                 })
                 .sum();
-            let total_volume: f64 = day_data.iter()
-                .map(|d| d.volume_usd.as_deref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0))
-                .sum();
-            let avg_tvl: f64 = day_data.iter()
+            let total_volume: f64 = day_data
+                .iter()
                 .map(|d| {
-                    d.reserve_usd.as_deref()
+                    d.volume_usd
+                        .as_deref()
+                        .and_then(|s| s.parse::<f64>().ok())
+                        .unwrap_or(0.0)
+                })
+                .sum();
+            let avg_tvl: f64 = day_data
+                .iter()
+                .map(|d| {
+                    d.reserve_usd
+                        .as_deref()
                         .or(d.tvl_usd.as_deref())
                         .and_then(|s| s.parse::<f64>().ok())
                         .unwrap_or(0.0)
                 })
-                .sum::<f64>() / days;
+                .sum::<f64>()
+                / days;
             let daily_avg_fees = total_fees / days;
             let daily_avg_volume = total_volume / days;
             let fees_7d = daily_avg_fees * 7.0;
             let volume_7d = daily_avg_volume * 7.0;
             let effective_tvl = if avg_tvl > 0.0 { avg_tvl } else { tvl };
-            let apr = if effective_tvl > 0.0 { (daily_avg_fees * 365.0 / effective_tvl) * 100.0 } else { 0.0 };
+            let apr = if effective_tvl > 0.0 {
+                (daily_avg_fees * 365.0 / effective_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees_7d, volume_7d, apr)
         } else {
             (0.0, 0.0, 0.0)

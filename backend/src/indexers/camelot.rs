@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 // ============================================================================
 // Camelot V3 — The Graph Subgraph (Algebra-based CL with dynamic fees)
@@ -130,16 +130,16 @@ impl CamelotIndexer {
 
         tracing::info!("[Camelot] Fetching pools from Algebra subgraph on Arbitrum");
 
-        let http_response = self.client
-            .post(&url)
-            .json(&query)
-            .send()
-            .await?;
+        let http_response = self.client.post(&url).json(&query).send().await?;
 
         let status = http_response.status();
         if !status.is_success() {
             let body = http_response.text().await.unwrap_or_default();
-            tracing::warn!("[Camelot] HTTP {}: {}", status, &body[..body.len().min(200)]);
+            tracing::warn!(
+                "[Camelot] HTTP {}: {}",
+                status,
+                &body[..body.len().min(200)]
+            );
             return Ok(vec![]);
         }
 
@@ -147,7 +147,11 @@ impl CamelotIndexer {
         let response: GraphQLResponse = match serde_json::from_str(&body) {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!("[Camelot] Failed to parse response: {} — body: {}", e, &body[..body.len().min(200)]);
+                tracing::warn!(
+                    "[Camelot] Failed to parse response: {} — body: {}",
+                    e,
+                    &body[..body.len().min(200)]
+                );
                 return Ok(vec![]);
             }
         };
@@ -162,10 +166,7 @@ impl CamelotIndexer {
 
         tracing::info!("[Camelot] Fetched {} pools from subgraph", pools.len());
 
-        let rates: Vec<PoolRate> = pools
-            .into_iter()
-            .filter_map(Self::parse_pool)
-            .collect();
+        let rates: Vec<PoolRate> = pools.into_iter().filter_map(Self::parse_pool).collect();
 
         tracing::info!("[Camelot] Parsed {} pools after filtering", rates.len());
         Ok(rates)
@@ -180,7 +181,9 @@ impl CamelotIndexer {
         // Algebra dynamic fee: stored as hundredths of a bip (1e-6 units)
         // e.g. fee=3000 means 0.30%, fee=500 means 0.05%
         // Same encoding as Uniswap V3 feeTier
-        let fee_raw: u32 = pool.fee.as_deref()
+        let fee_raw: u32 = pool
+            .fee
+            .as_deref()
             .or(pool.fee_tier.as_deref())
             .and_then(|s| s.parse().ok())
             .unwrap_or(3000);
@@ -195,7 +198,11 @@ impl CamelotIndexer {
             let fees: f64 = day.fees_usd.parse().unwrap_or(0.0);
             let vol: f64 = day.volume_usd.parse().unwrap_or(0.0);
             let day_tvl: f64 = day.tvl_usd.parse().unwrap_or(tvl);
-            let apr = if day_tvl > 0.0 { (fees * 365.0 / day_tvl) * 100.0 } else { 0.0 };
+            let apr = if day_tvl > 0.0 {
+                (fees * 365.0 / day_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees, vol, apr)
         } else {
             (0.0, 0.0, 0.0)
@@ -204,20 +211,31 @@ impl CamelotIndexer {
         // 7-day averages — extrapolate to 7 days when fewer days of data are available
         let (fees_7d, volume_7d, fee_apr_7d) = if !pool.pool_day_data.is_empty() {
             let days = pool.pool_day_data.len() as f64;
-            let total_fees: f64 = pool.pool_day_data.iter()
+            let total_fees: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.fees_usd.parse::<f64>().unwrap_or(0.0))
                 .sum();
-            let total_volume: f64 = pool.pool_day_data.iter()
+            let total_volume: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.volume_usd.parse::<f64>().unwrap_or(0.0))
                 .sum();
-            let avg_tvl: f64 = pool.pool_day_data.iter()
+            let avg_tvl: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.tvl_usd.parse::<f64>().unwrap_or(0.0))
-                .sum::<f64>() / days;
+                .sum::<f64>()
+                / days;
             let daily_avg_fees = total_fees / days;
             let daily_avg_volume = total_volume / days;
             let fees_7d = daily_avg_fees * 7.0;
             let volume_7d = daily_avg_volume * 7.0;
-            let apr = if avg_tvl > 0.0 { (daily_avg_fees * 365.0 / avg_tvl) * 100.0 } else { 0.0 };
+            let apr = if avg_tvl > 0.0 {
+                (daily_avg_fees * 365.0 / avg_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees_7d, volume_7d, apr)
         } else {
             (0.0, 0.0, 0.0)

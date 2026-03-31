@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Jito - Official Stake Pool Stats API
@@ -83,7 +83,10 @@ impl JitoIndexer {
             // Already in USD or SOL — use as-is
             tvl_raw
         } else {
-            tracing::warn!("[Jito] TVL value {:.0} seems too low, using fallback", tvl_raw);
+            tracing::warn!(
+                "[Jito] TVL value {:.0} seems too low, using fallback",
+                tvl_raw
+            );
             2_000_000_000.0
         };
 

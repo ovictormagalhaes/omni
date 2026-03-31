@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::time::Duration;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType, KnownAsset};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, KnownAsset, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Ethena - Native API Integration
@@ -56,7 +56,8 @@ impl EthenaIndexer {
 
         tracing::info!("[Ethena] Fetching sUSDe rates from Ethena API");
 
-        let response = self.client
+        let response = self
+            .client
             .get(ETHENA_YIELD_URL)
             .timeout(Duration::from_secs(30))
             .header("Accept", "application/json")

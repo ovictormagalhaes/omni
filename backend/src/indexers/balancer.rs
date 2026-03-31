@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::time::Duration;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 // ============================================================================
 // Balancer V2 - Native GraphQL API Integration
@@ -136,7 +136,8 @@ impl BalancerIndexer {
             }
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(BALANCER_API_URL)
             .timeout(Duration::from_secs(30))
             .header("Content-Type", "application/json")

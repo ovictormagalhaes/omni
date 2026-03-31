@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use mongodb::{Collection, Database, bson::doc};
+use mongodb::{bson::doc, Collection, Database};
 use serde::{Deserialize, Serialize};
 
 use crate::models::{Chain, Protocol, WorkerExecutionRecord};
@@ -139,30 +139,28 @@ impl ProtocolHealthService {
         let now = Utc::now();
         let metrics: Vec<ProtocolHealthMetrics> = map
             .into_iter()
-            .map(|((protocol, chain), acc)| {
-                ProtocolHealthMetrics {
-                    protocol,
-                    chain,
-                    uptime_percent: if acc.total > 0 {
-                        (acc.successes as f64 / acc.total as f64) * 100.0
-                    } else {
-                        0.0
-                    },
-                    avg_latency_ms: if acc.total > 0 {
-                        acc.total_latency_ms as f64 / acc.total as f64
-                    } else {
-                        0.0
-                    },
-                    sample_count: acc.total as usize,
-                    avg_items_found: if acc.total > 0 {
-                        acc.total_items as f64 / acc.total as f64
-                    } else {
-                        0.0
-                    },
-                    last_success_at: acc.last_success_at,
-                    last_error: acc.last_error,
-                    computed_at: now,
-                }
+            .map(|((protocol, chain), acc)| ProtocolHealthMetrics {
+                protocol,
+                chain,
+                uptime_percent: if acc.total > 0 {
+                    (acc.successes as f64 / acc.total as f64) * 100.0
+                } else {
+                    0.0
+                },
+                avg_latency_ms: if acc.total > 0 {
+                    acc.total_latency_ms as f64 / acc.total as f64
+                } else {
+                    0.0
+                },
+                sample_count: acc.total as usize,
+                avg_items_found: if acc.total > 0 {
+                    acc.total_items as f64 / acc.total as f64
+                } else {
+                    0.0
+                },
+                last_success_at: acc.last_success_at,
+                last_error: acc.last_error,
+                computed_at: now,
             })
             .collect();
 

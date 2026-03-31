@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // SparkLend - BlockAnalitica API Integration
@@ -17,8 +17,8 @@ use super::RateIndexer;
 const SPARK_API_URL: &str = "https://spark-api.blockanalitica.com/v1/ethereum/markets/";
 
 const SUPPORTED_ASSETS: &[&str] = &[
-    "USDC", "USDT", "DAI", "USDS", "SUSDS", "WETH", "ETH", "WSTETH", "STETH",
-    "WBTC", "RETH", "SDAI", "CBBTC", "GNO", "CBETH",
+    "USDC", "USDT", "DAI", "USDS", "SUSDS", "WETH", "ETH", "WSTETH", "STETH", "WBTC", "RETH",
+    "SDAI", "CBBTC", "GNO", "CBETH",
 ];
 
 // ── API response structures ────────────────────────────────────────────
@@ -66,7 +66,8 @@ impl SparkLendIndexer {
 
         tracing::info!("[SparkLend] Fetching rates from BlockAnalitica API");
 
-        let response = self.client
+        let response = self
+            .client
             .get(SPARK_API_URL)
             .header("Accept", "application/json")
             .send()
@@ -99,15 +100,19 @@ impl SparkLendIndexer {
             let asset = Asset::from_symbol(&symbol, "SparkLend");
 
             // API returns APY as string decimal (e.g. "0.012118" = 1.2118%)
-            let supply_apy = market.supply_apy
+            let supply_apy = market
+                .supply_apy
                 .as_deref()
                 .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(0.0) * 100.0;
+                .unwrap_or(0.0)
+                * 100.0;
 
-            let borrow_apr = market.borrow_variable_apy
+            let borrow_apr = market
+                .borrow_variable_apy
                 .as_deref()
                 .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(0.0) * 100.0;
+                .unwrap_or(0.0)
+                * 100.0;
 
             let total_supply = market.total_supply_usd.unwrap_or(0.0);
             let total_borrow = market.total_borrow_usd.unwrap_or(0.0);
@@ -118,7 +123,8 @@ impl SparkLendIndexer {
             let available_liquidity = (total_supply - total_borrow).max(0.0);
 
             // LTV comes as string decimal (e.g. "0.8500" = 85%)
-            let ltv = market.ltv
+            let ltv = market
+                .ltv
                 .as_deref()
                 .and_then(|s| s.parse::<f64>().ok())
                 .unwrap_or(0.0);
@@ -127,8 +133,12 @@ impl SparkLendIndexer {
             let is_frozen = market.is_frozen.unwrap_or(false);
             let borrowing_enabled = market.borrowing_enabled.unwrap_or(false);
 
-            if tvl < 1000.0 { continue; }
-            if supply_apy > 1000.0 || borrow_apr > 1000.0 { continue; }
+            if tvl < 1000.0 {
+                continue;
+            }
+            if supply_apy > 1000.0 || borrow_apr > 1000.0 {
+                continue;
+            }
 
             // Supply rate
             rates.push(ProtocolRate {
@@ -211,7 +221,8 @@ impl RateIndexer for SparkLendIndexer {
 
 fn normalize_symbol(symbol: &str) -> String {
     let s = symbol.to_uppercase();
-    let base = s.split(|c: char| c == '-' || c == '/' || c == ' ')
+    let base = s
+        .split(|c: char| c == '-' || c == '/' || c == ' ')
         .next()
         .unwrap_or(&s);
     base.to_string()
@@ -252,23 +263,42 @@ mod tests {
     async fn test_fetch_rates_ethereum() {
         let indexer = SparkLendIndexer::new();
         let result = indexer.fetch_rates(&Chain::Ethereum).await;
-        assert!(result.is_ok(), "Failed to fetch SparkLend rates: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fetch SparkLend rates: {:?}",
+            result.err()
+        );
 
         let rates = result.unwrap();
-        println!("SparkLend Ethereum: {} rates from BlockAnalitica API", rates.len());
+        println!(
+            "SparkLend Ethereum: {} rates from BlockAnalitica API",
+            rates.len()
+        );
         assert!(!rates.is_empty(), "SparkLend should return rates");
 
-        let supply_rates: Vec<_> = rates.iter().filter(|r| r.action == Action::Supply).collect();
+        let supply_rates: Vec<_> = rates
+            .iter()
+            .filter(|r| r.action == Action::Supply)
+            .collect();
         assert!(!supply_rates.is_empty(), "Should have supply rates");
 
-        let borrow_rates: Vec<_> = rates.iter().filter(|r| r.action == Action::Borrow).collect();
+        let borrow_rates: Vec<_> = rates
+            .iter()
+            .filter(|r| r.action == Action::Borrow)
+            .collect();
         assert!(!borrow_rates.is_empty(), "Should have borrow rates");
 
         for rate in rates.iter().take(5) {
-            println!("  {} {:?} {}: APY {:.2}%, Borrow {:.2}%, Liquidity ${}, Util {:.1}%",
-                rate.protocol, rate.action, rate.asset,
-                rate.supply_apy, rate.borrow_apr,
-                rate.available_liquidity, rate.utilization_rate);
+            println!(
+                "  {} {:?} {}: APY {:.2}%, Borrow {:.2}%, Liquidity ${}, Util {:.1}%",
+                rate.protocol,
+                rate.action,
+                rate.asset,
+                rate.supply_apy,
+                rate.borrow_apr,
+                rate.available_liquidity,
+                rate.utilization_rate
+            );
             assert!(rate.supply_apy < 100.0, "Supply APY should be reasonable");
             assert!(rate.borrow_apr < 100.0, "Borrow APR should be reasonable");
         }

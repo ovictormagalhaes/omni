@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 #[derive(Clone)]
 pub struct CurveIndexer {
@@ -117,7 +117,12 @@ impl CurveIndexer {
         let pools_url = format!("https://api.curve.fi/v1/getPools/all/{}", slug);
         let volumes_url = format!("https://api.curve.fi/v1/getVolumes/{}", slug);
 
-        tracing::info!("[Curve] Fetching pools for {:?} from {} and {}", chain, pools_url, volumes_url);
+        tracing::info!(
+            "[Curve] Fetching pools for {:?} from {} and {}",
+            chain,
+            pools_url,
+            volumes_url
+        );
 
         let (pools_resp, volumes_resp) = tokio::join!(
             self.client.get(&pools_url).send(),
@@ -138,11 +143,20 @@ impl CurveIndexer {
                         return Ok(vec![]);
                     }
                 };
-                tracing::debug!("[Curve] Pools response for {:?}: {} bytes", chain, body.len());
+                tracing::debug!(
+                    "[Curve] Pools response for {:?}: {} bytes",
+                    chain,
+                    body.len()
+                );
                 match serde_json::from_str::<PoolsApiResponse>(&body) {
                     Ok(data) => data.data.map(|d| d.pool_data).unwrap_or_default(),
                     Err(e) => {
-                        tracing::warn!("[Curve] Failed to parse pools for {:?}: {} — body starts: {}", chain, e, &body[..body.len().min(200)]);
+                        tracing::warn!(
+                            "[Curve] Failed to parse pools for {:?}: {} — body starts: {}",
+                            chain,
+                            e,
+                            &body[..body.len().min(200)]
+                        );
                         return Ok(vec![]);
                     }
                 }
@@ -161,18 +175,21 @@ impl CurveIndexer {
                     HashMap::new()
                 } else {
                     match resp.json::<VolumesApiResponse>().await {
-                        Ok(data) => {
-                            data.data
-                                .map(|d| {
-                                    d.pools
-                                        .into_iter()
-                                        .map(|v| (v.address.to_lowercase(), v))
-                                        .collect()
-                                })
-                                .unwrap_or_default()
-                        }
+                        Ok(data) => data
+                            .data
+                            .map(|d| {
+                                d.pools
+                                    .into_iter()
+                                    .map(|v| (v.address.to_lowercase(), v))
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
                         Err(e) => {
-                            tracing::warn!("[Curve] Failed to parse volumes response for {:?}: {}", chain, e);
+                            tracing::warn!(
+                                "[Curve] Failed to parse volumes response for {:?}: {}",
+                                chain,
+                                e
+                            );
                             HashMap::new()
                         }
                     }
@@ -197,7 +214,11 @@ impl CurveIndexer {
             .filter_map(|p| self.parse_pool(p, &volume_map, chain))
             .collect();
 
-        tracing::info!("[Curve] Parsed {} pools for {:?} after filtering", rates.len(), chain);
+        tracing::info!(
+            "[Curve] Parsed {} pools for {:?} after filtering",
+            rates.len(),
+            chain
+        );
         Ok(rates)
     }
 
@@ -252,8 +273,12 @@ impl CurveIndexer {
         // Volume and APY data from the volumes endpoint
         let vol_data = volume_map.get(&address.to_lowercase());
         let volume_24h = vol_data.and_then(|v| v.volume_usd).unwrap_or(0.0);
-        let fee_apr_24h = vol_data.and_then(|v| v.latest_daily_apy_pcent).unwrap_or(0.0);
-        let fee_apr_7d = vol_data.and_then(|v| v.latest_weekly_apy_pcent).unwrap_or(0.0);
+        let fee_apr_24h = vol_data
+            .and_then(|v| v.latest_daily_apy_pcent)
+            .unwrap_or(0.0);
+        let fee_apr_7d = vol_data
+            .and_then(|v| v.latest_weekly_apy_pcent)
+            .unwrap_or(0.0);
 
         // Estimate fees from volume (0.04% typical Curve fee)
         let fees_24h = volume_24h * 0.0004;
@@ -262,12 +287,7 @@ impl CurveIndexer {
         let gauge_rewards_apy: f64 = pool
             .gauge_rewards
             .as_ref()
-            .map(|rewards| {
-                rewards
-                    .iter()
-                    .filter_map(|r| r.apy)
-                    .sum::<f64>()
-            })
+            .map(|rewards| rewards.iter().filter_map(|r| r.apy).sum::<f64>())
             .unwrap_or(0.0);
 
         let crv_apy: f64 = pool

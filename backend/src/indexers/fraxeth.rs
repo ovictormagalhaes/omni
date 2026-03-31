@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Frax Ether (sfrxETH) - Official Frax API Integration
@@ -56,7 +56,8 @@ impl FraxEthIndexer {
 
         tracing::info!("[FraxETH] Fetching rates from official Frax API");
 
-        let response = self.client
+        let response = self
+            .client
             .get(FRAX_API_URL)
             .header("Accept", "application/json")
             .send()
@@ -151,15 +152,21 @@ mod tests {
     async fn test_fetch_rates() {
         let indexer = FraxEthIndexer::new();
         let result = indexer.fetch_rates(&Chain::Ethereum).await;
-        assert!(result.is_ok(), "Failed to fetch FraxETH rates: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fetch FraxETH rates: {:?}",
+            result.err()
+        );
 
         let rates = result.unwrap();
         println!("FraxETH: {} rates from official API", rates.len());
         assert!(!rates.is_empty(), "FraxETH should return rates");
 
         for rate in &rates {
-            println!("  {} {}: APY {:.2}%, TVL ${}",
-                rate.protocol, rate.asset, rate.supply_apy, rate.total_liquidity);
+            println!(
+                "  {} {}: APY {:.2}%, TVL ${}",
+                rate.protocol, rate.asset, rate.supply_apy, rate.total_liquidity
+            );
             assert!(rate.supply_apy > 0.0, "APY should be positive");
             assert!(rate.supply_apy < 100.0, "APY should be reasonable");
         }

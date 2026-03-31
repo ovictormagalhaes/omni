@@ -4,9 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
-
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 const AAVE_API_URL: &str = "https://api.v3.aave.com/graphql";
 
@@ -133,7 +132,7 @@ impl AaveIndexer {
             _ => {
                 tracing::debug!("Aave doesn't support chain {:?}, skipping", chain);
                 return Ok(vec![]);
-            },
+            }
         };
 
         // GraphQL query for Aave official API
@@ -182,12 +181,8 @@ impl AaveIndexer {
 
         tracing::debug!("Fetching Aave rates for {:?} from official API", chain);
 
-        let response = self.client
-            .post(AAVE_API_URL)
-            .json(&query)
-            .send()
-            .await?;
-        
+        let response = self.client.post(AAVE_API_URL).json(&query).send().await?;
+
         tracing::debug!("Aave API response status: {}", response.status());
 
         let response_text = response.text().await?;
@@ -198,10 +193,14 @@ impl AaveIndexer {
         if let Some(errors) = &gql_response.errors {
             let error_messages: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
             tracing::error!("Aave API errors: {:?}", error_messages);
-            return Err(anyhow::anyhow!("Aave API errors: {}", error_messages.join(", ")));
+            return Err(anyhow::anyhow!(
+                "Aave API errors: {}",
+                error_messages.join(", ")
+            ));
         }
 
-        let data = gql_response.data
+        let data = gql_response
+            .data
             .ok_or_else(|| anyhow::anyhow!("No data returned from Aave API"))?;
 
         let rates = self.parse_market_data(data.market, chain)?;
@@ -223,12 +222,14 @@ impl AaveIndexer {
 
             let supply_apy = reserve.supply_info.apy.value.parse::<f64>().unwrap_or(0.0) * 100.0;
 
-            let borrow_apr = reserve.borrow_info
+            let borrow_apr = reserve
+                .borrow_info
                 .as_ref()
                 .map(|info| info.apy.value.parse::<f64>().unwrap_or(0.0) * 100.0)
                 .unwrap_or(0.0);
 
-            let utilization_rate = reserve.borrow_info
+            let utilization_rate = reserve
+                .borrow_info
                 .as_ref()
                 .map(|info| info.utilization_rate.value.parse::<f64>().unwrap_or(0.0) * 100.0)
                 .unwrap_or(0.0);
@@ -238,9 +239,16 @@ impl AaveIndexer {
             let total_liquidity = total_liquidity_usd.round() as u64;
 
             // Use API-provided available liquidity, fallback to calculation
-            let available_liquidity = reserve.borrow_info
+            let available_liquidity = reserve
+                .borrow_info
                 .as_ref()
-                .map(|info| info.available_liquidity.usd.parse::<f64>().unwrap_or(0.0).round() as u64)
+                .map(|info| {
+                    info.available_liquidity
+                        .usd
+                        .parse::<f64>()
+                        .unwrap_or(0.0)
+                        .round() as u64
+                })
                 .unwrap_or_else(|| {
                     let utilization_decimal = utilization_rate / 100.0;
                     (total_liquidity_usd * (1.0 - utilization_decimal)).round() as u64
@@ -253,7 +261,8 @@ impl AaveIndexer {
 
             // borrowInfo is null = not borrowable at all
             // borrowingState != ENABLED = borrowing disabled
-            let borrow_enabled = reserve.borrow_info
+            let borrow_enabled = reserve
+                .borrow_info
                 .as_ref()
                 .map(|info| info.borrowing_state == "ENABLED" && !info.borrow_cap_reached)
                 .unwrap_or(false);
@@ -261,16 +270,28 @@ impl AaveIndexer {
 
             // Use real collateral data from the API
             let collateral_enabled = reserve.supply_info.can_be_collateral;
-            let collateral_ltv = reserve.supply_info.max_ltv.value.parse::<f64>().unwrap_or(0.0);
+            let collateral_ltv = reserve
+                .supply_info
+                .max_ltv
+                .value
+                .parse::<f64>()
+                .unwrap_or(0.0);
 
             if is_frozen {
-                tracing::debug!("Aave reserve {} on {:?} is frozen, marking inactive", symbol, chain);
+                tracing::debug!(
+                    "Aave reserve {} on {:?} is frozen, marking inactive",
+                    symbol,
+                    chain
+                );
             }
             if !borrow_enabled {
-                tracing::debug!("Aave reserve {} on {:?} borrowing disabled (borrowInfo={}, state={:?})",
-                    symbol, chain,
+                tracing::debug!(
+                    "Aave reserve {} on {:?} borrowing disabled (borrowInfo={}, state={:?})",
+                    symbol,
+                    chain,
                     reserve.borrow_info.is_some(),
-                    reserve.borrow_info.as_ref().map(|i| &i.borrowing_state));
+                    reserve.borrow_info.as_ref().map(|i| &i.borrowing_state)
+                );
             }
 
             rates.push(ProtocolRate {
@@ -341,7 +362,8 @@ impl AaveIndexer {
         if let Some(asset_addr) = underlying_asset {
             format!(
                 "https://app.aave.com/reserve-overview/?underlyingAsset={}&marketName={}",
-                asset_addr.to_lowercase(), market_name
+                asset_addr.to_lowercase(),
+                market_name
             )
         } else {
             // Fallback to generic market URL
@@ -373,15 +395,5 @@ impl RateIndexer for AaveIndexer {
 
     fn rate_url(&self, rate: &ProtocolRate) -> String {
         self.get_protocol_url(&rate.chain, rate.underlying_asset.as_deref())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_asset_normalization() {
-        // Tests moved to models.rs Asset::from_symbol()
     }
 }

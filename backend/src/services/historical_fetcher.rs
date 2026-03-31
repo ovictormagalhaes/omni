@@ -1,9 +1,9 @@
-use anyhow::{Result, Context};
+use crate::models::{Chain, Protocol, RateResult};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::Deserialize;
 use tokio::sync::OnceCell;
-use crate::models::{Protocol, Chain, RateResult};
 
 /// Historical data point from external sources (TheGraph, APIs)
 #[derive(Debug, Clone)]
@@ -48,7 +48,7 @@ impl HistoricalFetcher {
             defillama_pools_cache: OnceCell::new(),
         }
     }
-    
+
     /// Fetch historical data for a specific vault/pool
     pub async fn fetch_historical_data(
         &self,
@@ -60,43 +60,111 @@ impl HistoricalFetcher {
     ) -> Result<Vec<HistoricalDataPoint>> {
         match protocol {
             // Protocol-specific APIs (richer data: borrow rates, utilization, etc.)
-            Protocol::Aave => self.fetch_aave_historical(chain, rate, start_date, end_date).await,
-            Protocol::Morpho => self.fetch_morpho_historical(chain, rate, start_date, end_date).await,
-            Protocol::SparkLend => self.fetch_sparklend_historical(chain, rate, start_date, end_date).await,
-            Protocol::Lido => self.fetch_lido_historical(chain, start_date, end_date).await,
+            Protocol::Aave => {
+                self.fetch_aave_historical(chain, rate, start_date, end_date)
+                    .await
+            }
+            Protocol::Morpho => {
+                self.fetch_morpho_historical(chain, rate, start_date, end_date)
+                    .await
+            }
+            Protocol::SparkLend => {
+                self.fetch_sparklend_historical(chain, rate, start_date, end_date)
+                    .await
+            }
+            Protocol::Lido => {
+                self.fetch_lido_historical(chain, start_date, end_date)
+                    .await
+            }
             Protocol::Marinade => self.fetch_marinade_historical(start_date, end_date).await,
-            Protocol::Kamino => self.fetch_kamino_historical(rate, start_date, end_date).await,
+            Protocol::Kamino => {
+                self.fetch_kamino_historical(rate, start_date, end_date)
+                    .await
+            }
 
             // DeFi Llama vault_id-based: these indexers store the DeFi Llama pool UUID
             // in rate.vault_id, so we can fetch chart data directly.
-            Protocol::Compound | Protocol::Benqi |
-            Protocol::Pendle | Protocol::Ethena | Protocol::EtherFi |
-            Protocol::Jupiter => {
-                self.fetch_defillama_by_vault_id(protocol, rate, start_date, end_date).await
+            Protocol::Compound
+            | Protocol::Benqi
+            | Protocol::Pendle
+            | Protocol::Ethena
+            | Protocol::EtherFi
+            | Protocol::Jupiter => {
+                self.fetch_defillama_by_vault_id(protocol, rate, start_date, end_date)
+                    .await
             }
 
             // DeFi Llama search-based: these don't cache the pool UUID, so we search
             // the pools endpoint by project name + chain + asset symbol.
             Protocol::Jito => {
-                self.fetch_defillama_by_search("jito-staked-sol", chain, &rate.asset.symbol(), start_date, end_date).await
+                self.fetch_defillama_by_search(
+                    "jito-staked-sol",
+                    chain,
+                    &rate.asset.symbol(),
+                    start_date,
+                    end_date,
+                )
+                .await
             }
             Protocol::Venus => {
-                self.fetch_defillama_by_search("venus-core-pool", chain, &rate.asset.symbol(), start_date, end_date).await
+                self.fetch_defillama_by_search(
+                    "venus-core-pool",
+                    chain,
+                    &rate.asset.symbol(),
+                    start_date,
+                    end_date,
+                )
+                .await
             }
             Protocol::Gmx => {
-                self.fetch_defillama_by_search("gmx-v2-perps", chain, &rate.asset.symbol(), start_date, end_date).await
+                self.fetch_defillama_by_search(
+                    "gmx-v2-perps",
+                    chain,
+                    &rate.asset.symbol(),
+                    start_date,
+                    end_date,
+                )
+                .await
             }
             Protocol::Fluid => {
-                self.fetch_defillama_by_search("fluid", chain, &rate.asset.symbol(), start_date, end_date).await
+                self.fetch_defillama_by_search(
+                    "fluid",
+                    chain,
+                    &rate.asset.symbol(),
+                    start_date,
+                    end_date,
+                )
+                .await
             }
             Protocol::RocketPool => {
-                self.fetch_defillama_by_search("rocket-pool", chain, &rate.asset.symbol(), start_date, end_date).await
+                self.fetch_defillama_by_search(
+                    "rocket-pool",
+                    chain,
+                    &rate.asset.symbol(),
+                    start_date,
+                    end_date,
+                )
+                .await
             }
             Protocol::Euler => {
-                self.fetch_defillama_by_search("euler-v2", chain, &rate.asset.symbol(), start_date, end_date).await
+                self.fetch_defillama_by_search(
+                    "euler-v2",
+                    chain,
+                    &rate.asset.symbol(),
+                    start_date,
+                    end_date,
+                )
+                .await
             }
             Protocol::JustLend => {
-                self.fetch_defillama_by_search("justlend", chain, &rate.asset.symbol(), start_date, end_date).await
+                self.fetch_defillama_by_search(
+                    "justlend",
+                    chain,
+                    &rate.asset.symbol(),
+                    start_date,
+                    end_date,
+                )
+                .await
             }
 
             _ => {
@@ -105,7 +173,7 @@ impl HistoricalFetcher {
             }
         }
     }
-    
+
     /// Aave: TheGraph subgraph (V3 markets)
     async fn fetch_aave_historical(
         &self,
@@ -118,13 +186,13 @@ impl HistoricalFetcher {
         let subgraph_id = match chain {
             Chain::Ethereum => "Cd2gEDVeqnjBn1hSeqFMitw8Q1iiyV9FYUZkLNRcL87g",
             Chain::Arbitrum => "DLuE98kEb5pQNXAcKFQGQgfSQ57Xdou4jnVbAEqMfy3B",
-            Chain::Base     => "GQFbb95cE6d8mV989mL5figjaGaKCQB3xqYrr1bRyXqF",
-            Chain::Polygon  => "Co2URyXjnxaw8WqxKyVHdirq9Ahhm5vcTs4dMedAq211",
+            Chain::Base => "GQFbb95cE6d8mV989mL5figjaGaKCQB3xqYrr1bRyXqF",
+            Chain::Polygon => "Co2URyXjnxaw8WqxKyVHdirq9Ahhm5vcTs4dMedAq211",
             Chain::Optimism => "DSfLz8oQBUeU5atALgUFQKMTSYV9mZAVYp4noLSXAfvb",
-            Chain::Avalanche=> "2h9woxy8RTjHu1HJsCEnmzpPHFArU33avmUh4f71JpVn",
+            Chain::Avalanche => "2h9woxy8RTjHu1HJsCEnmzpPHFArU33avmUh4f71JpVn",
             _ => return Ok(vec![]),
         };
-        
+
         // Require a Graph Studio API key — the deprecated hosted service is gone.
         let api_key = self.graph_api_key.as_deref().ok_or_else(|| {
             anyhow::anyhow!(
@@ -138,11 +206,12 @@ impl HistoricalFetcher {
             "https://gateway.thegraph.com/api/{}/subgraphs/id/{}",
             api_key, subgraph_id
         );
-        
+
         // Extract reserve address from URL (if available)
         let reserve_address = self.extract_address_from_url(&rate.url);
-        
-        let query = format!(r#"
+
+        let query = format!(
+            r#"
         {{
           reserves(where: {{underlyingAsset: "{}"}}) {{
             id
@@ -162,59 +231,76 @@ impl HistoricalFetcher {
             }}
           }}
         }}
-        "#, 
+        "#,
             reserve_address.unwrap_or("".to_string()),
             start_date.timestamp(),
             end_date.timestamp()
         );
-        
+
         tracing::debug!("🌐 Aave GraphQL endpoint: {}", endpoint_url);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&endpoint_url)
             .json(&serde_json::json!({ "query": query }))
             .send()
             .await
             .context("Failed to query Aave subgraph")?;
-        
+
         let status = response.status();
         tracing::debug!("📡 Aave GraphQL Response: {}", status);
-        
+
         if !status.is_success() {
-            let error_body = response.text().await.unwrap_or_else(|_| "Failed to read error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to read error".to_string());
             tracing::warn!("⚠️ Aave GraphQL error {}: {}", status, error_body);
             return Ok(vec![]);
         }
-        
+
         // Read the raw body so we can log it before deserialization
-        let raw_body = response.text().await.context("Failed to read Aave subgraph response body")?;
-        tracing::debug!("📦 Aave raw response (first 500 chars): {}", &raw_body[..raw_body.len().min(500)]);
-        
+        let raw_body = response
+            .text()
+            .await
+            .context("Failed to read Aave subgraph response body")?;
+        tracing::debug!(
+            "📦 Aave raw response (first 500 chars): {}",
+            &raw_body[..raw_body.len().min(500)]
+        );
+
         let data: AaveSubgraphResponse = serde_json::from_str(&raw_body)
             .context("Failed to deserialize Aave subgraph response")?;
-        
+
         if let Some(reserves) = data.data {
             if let Some(reserve) = reserves.reserves.first() {
-                let points: Vec<HistoricalDataPoint> = reserve.params_history.iter().map(|h| {
-                    HistoricalDataPoint {
-                        date: DateTime::from_timestamp(h.timestamp, 0).unwrap_or(Utc::now()),
-                        supply_apy: h.liquidity_rate.parse::<f64>().unwrap_or(0.0) / 1e27 * 100.0, // Ray (1e27) to %
-                        borrow_apr: h.variable_borrow_rate.parse::<f64>().unwrap_or(0.0) / 1e27 * 100.0,
-                        total_liquidity: h.total_liquidity.parse::<u64>().unwrap_or(0),
-                        available_liquidity: h.available_liquidity.parse::<u64>().unwrap_or(0),
-                        utilization_rate: (h.utilization_rate.parse::<f64>().unwrap_or(0.0) * 100.0) as u32,
-                    }
-                }).collect();
-                
+                let points: Vec<HistoricalDataPoint> = reserve
+                    .params_history
+                    .iter()
+                    .map(|h| {
+                        HistoricalDataPoint {
+                            date: DateTime::from_timestamp(h.timestamp, 0).unwrap_or(Utc::now()),
+                            supply_apy: h.liquidity_rate.parse::<f64>().unwrap_or(0.0) / 1e27
+                                * 100.0, // Ray (1e27) to %
+                            borrow_apr: h.variable_borrow_rate.parse::<f64>().unwrap_or(0.0) / 1e27
+                                * 100.0,
+                            total_liquidity: h.total_liquidity.parse::<u64>().unwrap_or(0),
+                            available_liquidity: h.available_liquidity.parse::<u64>().unwrap_or(0),
+                            utilization_rate: (h.utilization_rate.parse::<f64>().unwrap_or(0.0)
+                                * 100.0) as u32,
+                        }
+                    })
+                    .collect();
+
                 tracing::info!("✅ Found {} Aave historical data points", points.len());
                 return Ok(points);
             }
         }
-        
+
         tracing::warn!("⚠️ No Aave historical data found for reserve");
         Ok(vec![])
     }
-    
+
     /// Morpho: Official API (has historical endpoints)
     async fn fetch_morpho_historical(
         &self,
@@ -223,24 +309,32 @@ impl HistoricalFetcher {
         start_date: DateTime<Utc>,
         end_date: DateTime<Utc>,
     ) -> Result<Vec<HistoricalDataPoint>> {
-        tracing::info!("Fetching Morpho {:?} historical data from {} to {}...", chain, start_date, end_date);
-        
+        tracing::info!(
+            "Fetching Morpho {:?} historical data from {} to {}...",
+            chain,
+            start_date,
+            end_date
+        );
+
         // For Morpho, extract the vault address (40-char Ethereum address) from the URL
         // Example: https://app.morpho.org/ethereum/vault/0xfeaC08ffA38d95ec5Ed7C46c933C8891a44C5F26
         let vault_address = self.extract_address_from_url(&rate.url);
-        
+
         if vault_address.is_none() {
-            tracing::warn!("⚠️ Could not extract Morpho vault address from URL: {}", rate.url);
+            tracing::warn!(
+                "⚠️ Could not extract Morpho vault address from URL: {}",
+                rate.url
+            );
             return Ok(vec![]);
         }
-        
+
         let address = vault_address.unwrap();
         tracing::debug!("📌 Extracted Morpho vault address: {}", address);
-        
+
         // Use GraphQL API to fetch historical data
         let chain_id = self.chain_to_morpho_chain_id(chain);
         let graphql_url = "https://api.morpho.org/graphql";
-        
+
         let query = serde_json::json!({
             "query": r#"
                 query GetVaultHistory($address: String!, $chainId: Int!) {
@@ -265,48 +359,55 @@ impl HistoricalFetcher {
                 "chainId": chain_id
             }
         });
-        
-        tracing::debug!("🌐 Morpho GraphQL query: {}", serde_json::to_string_pretty(&query)?);
-        
-        let response = self.client
+
+        tracing::debug!(
+            "🌐 Morpho GraphQL query: {}",
+            serde_json::to_string_pretty(&query)?
+        );
+
+        let response = self
+            .client
             .post(graphql_url)
             .json(&query)
             .send()
             .await
             .context("Failed to send GraphQL request to Morpho API")?;
-        
+
         let status = response.status();
         tracing::debug!("📡 Morpho API Response: {}", status);
-        
+
         if !status.is_success() {
-            let error_body = response.text().await.unwrap_or_else(|_| "Failed to read error body".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to read error body".to_string());
             tracing::warn!("⚠️ Morpho API error {}: {}", status, error_body);
             return Ok(vec![]);
         }
-        
+
         let text = response.text().await?;
         tracing::debug!("📦 Morpho Response size: {} bytes", text.len());
-        
-        let graphql_response: MorphoHistoricalGraphQLResponse = serde_json::from_str(&text)
-            .context("Failed to parse Morpho GraphQL response")?;
-        
+
+        let graphql_response: MorphoHistoricalGraphQLResponse =
+            serde_json::from_str(&text).context("Failed to parse Morpho GraphQL response")?;
+
         if let Some(vault) = graphql_response.data.and_then(|d| d.vault_by_address) {
             if let Some(historical_state) = vault.historical_state {
                 // Convert historical state to data points
                 let mut points = Vec::new();
-                
+
                 // historicalState contains arrays of {x: timestamp, y: value}
                 if let Some(net_apy) = historical_state.net_apy {
                     for data_point in net_apy {
                         // x is Unix timestamp in milliseconds
                         let timestamp = DateTime::from_timestamp(data_point.x / 1000, 0)
                             .unwrap_or_else(|| Utc::now());
-                        
+
                         // Filter by date range
                         if timestamp >= start_date && timestamp <= end_date {
                             // y is APY as decimal (e.g., 0.05 for 5%)
                             let apy = data_point.y * 100.0;
-                            
+
                             points.push(HistoricalDataPoint {
                                 date: timestamp,
                                 supply_apy: apy,
@@ -318,16 +419,16 @@ impl HistoricalFetcher {
                         }
                     }
                 }
-                
+
                 tracing::info!("✅ Found {} Morpho historical data points", points.len());
                 return Ok(points);
             }
         }
-        
+
         tracing::warn!("⚠️ No historical data found for vault {}", address);
         Ok(vec![])
     }
-    
+
     /// Kamino: Use DeFi Llama yields API for historical APY data
     async fn fetch_kamino_historical(
         &self,
@@ -339,7 +440,7 @@ impl HistoricalFetcher {
         // These are the Kamino lending pool IDs on DeFi Llama
         let pool_id = match rate.asset.symbol().as_str() {
             "USDC" => "d3ef9e58-8595-4a1e-9e78-3699e85a2862",
-            "SOL"  => "c42c4fec-d0e5-4e27-9e29-38a7d3f1e0a5",
+            "SOL" => "c42c4fec-d0e5-4e27-9e29-38a7d3f1e0a5",
             "USDT" => "28f07d2d-5752-4fa0-8b25-c6d1ad7a8b4e",
             _ => {
                 tracing::debug!("No DeFi Llama pool ID mapped for Kamino {}", rate.asset);
@@ -347,12 +448,16 @@ impl HistoricalFetcher {
             }
         };
 
-        tracing::info!("Fetching Kamino {} historical data from DeFi Llama (pool: {})",
-            rate.asset, pool_id);
+        tracing::info!(
+            "Fetching Kamino {} historical data from DeFi Llama (pool: {})",
+            rate.asset,
+            pool_id
+        );
 
         let url = format!("https://yields.llama.fi/chart/{}", pool_id);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -366,12 +471,13 @@ impl HistoricalFetcher {
 
         let text = response.text().await?;
 
-        let data: DefiLlamaChartResponse = serde_json::from_str(&text)
-            .context("Failed to parse Kamino DeFi Llama response")?;
+        let data: DefiLlamaChartResponse =
+            serde_json::from_str(&text).context("Failed to parse Kamino DeFi Llama response")?;
 
         let raw_count = data.data.len();
 
-        let points: Vec<HistoricalDataPoint> = data.data
+        let points: Vec<HistoricalDataPoint> = data
+            .data
             .into_iter()
             .filter(|p| {
                 let point_date = DateTime::parse_from_rfc3339(&p.timestamp)
@@ -400,11 +506,14 @@ impl HistoricalFetcher {
             })
             .collect();
 
-        tracing::info!("Found {} Kamino historical data points (filtered from {})",
-            points.len(), raw_count);
+        tracing::info!(
+            "Found {} Kamino historical data points (filtered from {})",
+            points.len(),
+            raw_count
+        );
         Ok(points)
     }
-    
+
     // ========================================================================
     // GENERIC DEFI LLAMA HISTORICAL FETCHERS
     // ========================================================================
@@ -421,17 +530,24 @@ impl HistoricalFetcher {
         let pool_id = match &rate.vault_id {
             Some(id) if !id.is_empty() => id.clone(),
             _ => {
-                tracing::debug!("No DeFi Llama pool ID in vault_id for {:?} {}", protocol, rate.asset);
+                tracing::debug!(
+                    "No DeFi Llama pool ID in vault_id for {:?} {}",
+                    protocol,
+                    rate.asset
+                );
                 return Ok(vec![]);
             }
         };
 
         tracing::info!(
             "Fetching {:?} {} historical data from DeFi Llama (pool: {})",
-            protocol, rate.asset, pool_id
+            protocol,
+            rate.asset,
+            pool_id
         );
 
-        self.fetch_defillama_chart(&pool_id, start_date, end_date).await
+        self.fetch_defillama_chart(&pool_id, start_date, end_date)
+            .await
     }
 
     /// Fetch historical data by searching the DeFi Llama pools endpoint for a
@@ -448,34 +564,42 @@ impl HistoricalFetcher {
         let chain_name = chain_to_defillama_name(chain);
 
         // Fetch and cache all pools (single request per backfill run)
-        let pools = self.defillama_pools_cache.get_or_try_init(|| async {
-            tracing::info!("[DeFi Llama] Fetching pools index for historical search...");
-            let resp: DefiLlamaPoolsSearchResponse = self.client
-                .get("https://yields.llama.fi/pools")
-                .send()
-                .await
-                .context("Failed to fetch DeFi Llama pools")?
-                .json()
-                .await
-                .context("Failed to parse DeFi Llama pools response")?;
-            tracing::info!("[DeFi Llama] Cached {} pools for search", resp.data.len());
-            Ok::<_, anyhow::Error>(resp.data)
-        }).await?;
+        let pools = self
+            .defillama_pools_cache
+            .get_or_try_init(|| async {
+                tracing::info!("[DeFi Llama] Fetching pools index for historical search...");
+                let resp: DefiLlamaPoolsSearchResponse = self
+                    .client
+                    .get("https://yields.llama.fi/pools")
+                    .send()
+                    .await
+                    .context("Failed to fetch DeFi Llama pools")?
+                    .json()
+                    .await
+                    .context("Failed to parse DeFi Llama pools response")?;
+                tracing::info!("[DeFi Llama] Cached {} pools for search", resp.data.len());
+                Ok::<_, anyhow::Error>(resp.data)
+            })
+            .await?;
 
         let symbol_upper = symbol.to_uppercase();
 
         // Find matching pool: project + chain + symbol contains asset
-        let pool_id = pools.iter()
+        let pool_id = pools
+            .iter()
             .find(|p| {
-                p.project.as_deref()
+                p.project
+                    .as_deref()
                     .map(|s| s.eq_ignore_ascii_case(project))
                     .unwrap_or(false)
-                && p.chain.as_deref()
-                    .map(|s| s.eq_ignore_ascii_case(chain_name))
-                    .unwrap_or(false)
-                && p.symbol.as_deref()
-                    .map(|s| s.to_uppercase().contains(&symbol_upper))
-                    .unwrap_or(false)
+                    && p.chain
+                        .as_deref()
+                        .map(|s| s.eq_ignore_ascii_case(chain_name))
+                        .unwrap_or(false)
+                    && p.symbol
+                        .as_deref()
+                        .map(|s| s.to_uppercase().contains(&symbol_upper))
+                        .unwrap_or(false)
             })
             .and_then(|p| p.pool.clone());
 
@@ -484,7 +608,9 @@ impl HistoricalFetcher {
             None => {
                 tracing::debug!(
                     "No DeFi Llama pool found for {} / {:?} / {}",
-                    project, chain, symbol
+                    project,
+                    chain,
+                    symbol
                 );
                 return Ok(vec![]);
             }
@@ -492,10 +618,14 @@ impl HistoricalFetcher {
 
         tracing::info!(
             "Found DeFi Llama pool {} for {} {:?} {}",
-            pool_id, project, chain, symbol
+            pool_id,
+            project,
+            chain,
+            symbol
         );
 
-        self.fetch_defillama_chart(&pool_id, start_date, end_date).await
+        self.fetch_defillama_chart(&pool_id, start_date, end_date)
+            .await
     }
 
     /// Core DeFi Llama chart fetcher — shared by vault_id-based and search-based methods.
@@ -508,7 +638,8 @@ impl HistoricalFetcher {
     ) -> Result<Vec<HistoricalDataPoint>> {
         let url = format!("https://yields.llama.fi/chart/{}", pool_id);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -517,18 +648,20 @@ impl HistoricalFetcher {
         if !response.status().is_success() {
             tracing::warn!(
                 "DeFi Llama chart API returned status {} for pool {}",
-                response.status(), pool_id
+                response.status(),
+                pool_id
             );
             return Ok(vec![]);
         }
 
         let text = response.text().await?;
-        let data: DefiLlamaChartResponse = serde_json::from_str(&text)
-            .context("Failed to parse DeFi Llama chart response")?;
+        let data: DefiLlamaChartResponse =
+            serde_json::from_str(&text).context("Failed to parse DeFi Llama chart response")?;
 
         let raw_count = data.data.len();
 
-        let points: Vec<HistoricalDataPoint> = data.data
+        let points: Vec<HistoricalDataPoint> = data
+            .data
             .into_iter()
             .filter_map(|p| {
                 let date = DateTime::parse_from_rfc3339(&p.timestamp)
@@ -551,7 +684,9 @@ impl HistoricalFetcher {
 
         tracing::info!(
             "Found {} DeFi Llama historical data points for pool {} (filtered from {})",
-            points.len(), pool_id, raw_count
+            points.len(),
+            pool_id,
+            raw_count
         );
         Ok(points)
     }
@@ -569,16 +704,17 @@ impl HistoricalFetcher {
             Chain::Ethereum => (1, "0xC13e21B648A5Ee794902342038FF3aDAB66BE987"),
             _ => return Ok(vec![]),
         };
-        
+
         tracing::info!("Fetching SparkLend historical data for {:?}...", chain);
-        
+
         // Extract reserve address from URL
         let reserve_address = self.extract_address_from_url(&rate.url);
         if reserve_address.is_none() {
             return Ok(vec![]);
         }
-        
-        let query = format!(r#"
+
+        let query = format!(
+            r#"
         {{
           market(request: {{chainId: {}, address: "{}"}}) {{
             reserves(where: {{underlyingAsset: "{}"}}) {{
@@ -609,44 +745,58 @@ impl HistoricalFetcher {
             start_date.timestamp(),
             end_date.timestamp()
         );
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post("https://api.v3.aave.com/graphql")
             .json(&serde_json::json!({ "query": query }))
             .send()
             .await
             .context("Failed to query SparkLend via Aave API")?;
-        
+
         if !response.status().is_success() {
             tracing::warn!("SparkLend API returned status: {}", response.status());
             return Ok(vec![]);
         }
-        
+
         let data: SparkLendResponse = response.json().await?;
-        
+
         if let Some(market) = data.data {
             if let Some(reserves) = market.market {
                 if let Some(reserve) = reserves.reserves.first() {
-                    let points: Vec<HistoricalDataPoint> = reserve.params_history.iter().map(|h| {
-                        HistoricalDataPoint {
-                            date: DateTime::from_timestamp(h.timestamp.parse().unwrap_or(0), 0).unwrap_or(Utc::now()),
-                            supply_apy: h.liquidity_rate.parse::<f64>().unwrap_or(0.0) / 1e27 * 100.0, // Ray (1e27) to %
-                            borrow_apr: h.variable_borrow_rate.parse::<f64>().unwrap_or(0.0) / 1e27 * 100.0,
-                            total_liquidity: h.total_liquidity.parse::<u64>().unwrap_or(0),
-                            available_liquidity: h.available_liquidity.parse::<u64>().unwrap_or(0),
-                            utilization_rate: (h.utilization_rate.parse::<f64>().unwrap_or(0.0) * 100.0) as u32,
-                        }
-                    }).collect();
-                    
+                    let points: Vec<HistoricalDataPoint> = reserve
+                        .params_history
+                        .iter()
+                        .map(|h| {
+                            HistoricalDataPoint {
+                                date: DateTime::from_timestamp(h.timestamp.parse().unwrap_or(0), 0)
+                                    .unwrap_or(Utc::now()),
+                                supply_apy: h.liquidity_rate.parse::<f64>().unwrap_or(0.0) / 1e27
+                                    * 100.0, // Ray (1e27) to %
+                                borrow_apr: h.variable_borrow_rate.parse::<f64>().unwrap_or(0.0)
+                                    / 1e27
+                                    * 100.0,
+                                total_liquidity: h.total_liquidity.parse::<u64>().unwrap_or(0),
+                                available_liquidity: h
+                                    .available_liquidity
+                                    .parse::<u64>()
+                                    .unwrap_or(0),
+                                utilization_rate: (h.utilization_rate.parse::<f64>().unwrap_or(0.0)
+                                    * 100.0)
+                                    as u32,
+                            }
+                        })
+                        .collect();
+
                     tracing::info!("Found {} SparkLend historical data points", points.len());
                     return Ok(points);
                 }
             }
         }
-        
+
         Ok(vec![])
     }
-    
+
     /// Lido: Use DeFi Llama historical chart data
     async fn fetch_lido_historical(
         &self,
@@ -656,7 +806,7 @@ impl HistoricalFetcher {
     ) -> Result<Vec<HistoricalDataPoint>> {
         // Lido official API doesn't have full historical endpoint
         // Use DeFi Llama yields API for historical APY
-        
+
         let pool_id = match chain {
             Chain::Ethereum => "747c1d2a-c668-4682-b9f9-296708a3dd90", // stETH pool (CORRECT)
             // Note: Lido Solana stSOL pool not found in DeFi Llama
@@ -665,37 +815,44 @@ impl HistoricalFetcher {
                 return Ok(vec![]);
             }
         };
-        
-        tracing::info!("Fetching Lido {:?} historical data from {} to {}...", chain, start_date, end_date);
-        
+
+        tracing::info!(
+            "Fetching Lido {:?} historical data from {} to {}...",
+            chain,
+            start_date,
+            end_date
+        );
+
         let url = format!("https://yields.llama.fi/chart/{}", pool_id);
         tracing::debug!("🌐 Lido API URL: {}", url);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
             .context("Failed to fetch Lido historical from DeFi Llama")?;
-        
+
         let status = response.status();
         tracing::debug!("📡 Lido API Response: {}", status);
-        
+
         if !status.is_success() {
             tracing::warn!("⚠️ DeFi Llama API returned status: {}", status);
             return Ok(vec![]);
         }
-        
+
         let text = response.text().await?;
         tracing::debug!("📦 Lido Response size: {} bytes", text.len());
-        
-        let data: DefiLlamaChartResponse = serde_json::from_str(&text)
-            .context("Failed to parse Lido JSON response")?;
-        
+
+        let data: DefiLlamaChartResponse =
+            serde_json::from_str(&text).context("Failed to parse Lido JSON response")?;
+
         let raw_count = data.data.len();
         tracing::debug!("📊 Lido raw data points: {}", raw_count);
-        
+
         // Filter by date range
-        let points: Vec<HistoricalDataPoint> = data.data
+        let points: Vec<HistoricalDataPoint> = data
+            .data
             .into_iter()
             .filter(|p| {
                 let point_date = DateTime::parse_from_rfc3339(&p.timestamp)
@@ -712,7 +869,7 @@ impl HistoricalFetcher {
                     .ok()
                     .map(|d| d.with_timezone(&Utc))
                     .unwrap_or(Utc::now());
-                    
+
                 HistoricalDataPoint {
                     date,
                     supply_apy: p.apy,
@@ -723,43 +880,49 @@ impl HistoricalFetcher {
                 }
             })
             .collect();
-        
-        tracing::info!("✅ Found {} Lido historical data points (filtered from {})", points.len(), raw_count);
+
+        tracing::info!(
+            "✅ Found {} Lido historical data points (filtered from {})",
+            points.len(),
+            raw_count
+        );
         Ok(points)
     }
-    
+
     /// Marinade: Try to use extended APY endpoint
     async fn fetch_marinade_historical(
         &self,
         start_date: DateTime<Utc>,
         end_date: DateTime<Utc>,
     ) -> Result<Vec<HistoricalDataPoint>> {
-        tracing::info!("Fetching Marinade historical data from {} to {}...", start_date, end_date);
-        
+        tracing::info!(
+            "Fetching Marinade historical data from {} to {}...",
+            start_date,
+            end_date
+        );
+
         // Marinade API may not have historical endpoint
         // Try DeFi Llama as alternative
         let pool_id = "b3f93865-5ec8-4662-90a0-11808e0aa2bd"; // mSOL pool ID (CORRECT)
         let url = format!("https://yields.llama.fi/chart/{}", pool_id);
-        
+
         tracing::debug!("🌐 Marinade API URL: {}", url);
-        
-        let response = self.client
-            .get(&url)
-            .send()
-            .await;
-        
+
+        let response = self.client.get(&url).send().await;
+
         if let Ok(resp) = response {
             let status = resp.status();
             tracing::debug!("📡 Marinade API Response: {}", status);
-            
+
             if status.is_success() {
                 let text = resp.text().await?;
                 tracing::debug!("📦 Marinade Response size: {} bytes", text.len());
-                
+
                 if let Ok(data) = serde_json::from_str::<DefiLlamaChartResponse>(&text) {
                     let raw_count = data.data.len();
                     tracing::debug!("📊 Marinade raw data points: {}", raw_count);
-                    let points: Vec<HistoricalDataPoint> = data.data
+                    let points: Vec<HistoricalDataPoint> = data
+                        .data
                         .into_iter()
                         .filter(|p| {
                             let point_date = DateTime::parse_from_rfc3339(&p.timestamp)
@@ -776,7 +939,7 @@ impl HistoricalFetcher {
                                 .ok()
                                 .map(|d| d.with_timezone(&Utc))
                                 .unwrap_or(Utc::now());
-                                
+
                             HistoricalDataPoint {
                                 date,
                                 supply_apy: p.apy,
@@ -787,8 +950,12 @@ impl HistoricalFetcher {
                             }
                         })
                         .collect();
-                    
-                    tracing::info!("✅ Found {} Marinade historical data points (filtered from {})", points.len(), raw_count);
+
+                    tracing::info!(
+                        "✅ Found {} Marinade historical data points (filtered from {})",
+                        points.len(),
+                        raw_count
+                    );
                     return Ok(points);
                 } else {
                     tracing::error!("❌ Failed to parse Marinade JSON response");
@@ -799,13 +966,13 @@ impl HistoricalFetcher {
         } else {
             tracing::error!("❌ Failed to send request to Marinade API");
         }
-        
+
         tracing::warn!("Could not fetch Marinade historical data");
         Ok(vec![])
     }
-    
+
     // Helper methods
-    
+
     fn extract_address_from_url(&self, url: &str) -> Option<String> {
         // Extract Ethereum address (0x followed by EXACTLY 40 hex chars).
         // Note: the `regex` crate does NOT support lookaheads, so we match
@@ -813,12 +980,14 @@ impl HistoricalFetcher {
         // catching cases where we might otherwise match the first 40 chars of
         // a 64-char tx hash.
         let re = Regex::new(r"(?i)0x[0-9a-f]{40}").ok()?;
-        
+
         for capture in re.find_iter(url) {
             let end = capture.end();
             // Ensure the next character (if any) is NOT a hex char — avoids
             // matching the prefix of a 64-char transaction hash.
-            let next_is_hex = url[end..].chars().next()
+            let next_is_hex = url[end..]
+                .chars()
+                .next()
                 .map(|c| c.is_ascii_hexdigit())
                 .unwrap_or(false);
             if !next_is_hex {
@@ -827,11 +996,11 @@ impl HistoricalFetcher {
                 return Some(address);
             }
         }
-        
+
         tracing::warn!("⚠️ No valid Ethereum address found in URL: {}", url);
         None
     }
-    
+
     fn chain_to_morpho_chain_id(&self, chain: &Chain) -> i32 {
         match chain {
             Chain::Ethereum => 1,
@@ -1012,4 +1181,3 @@ struct DefiLlamaChartPoint {
 #[cfg(test)]
 #[path = "historical_fetcher_test.rs"]
 mod tests;
-

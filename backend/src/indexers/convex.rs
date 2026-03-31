@@ -2,9 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
-use crate::indexers::defillama_pools::{self, DefiLlamaCache};
 use super::RateIndexer;
+use crate::indexers::defillama_pools::{self, DefiLlamaCache};
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Convex Finance - DeFiLlama Integration
@@ -55,19 +55,29 @@ impl ConvexIndexer {
 
         for pool in &pools {
             let project = pool.project.as_deref().unwrap_or_default();
-            if !project.eq_ignore_ascii_case("convex-finance") { continue; }
+            if !project.eq_ignore_ascii_case("convex-finance") {
+                continue;
+            }
             let ch = pool.chain.as_deref().unwrap_or_default();
-            if !ch.eq_ignore_ascii_case(chain_name) { continue; }
+            if !ch.eq_ignore_ascii_case(chain_name) {
+                continue;
+            }
 
             let symbol_raw = pool.symbol.as_deref().unwrap_or_default();
-            let symbol = symbol_raw.split('-').next().unwrap_or(symbol_raw).to_uppercase();
+            let symbol = symbol_raw
+                .split('-')
+                .next()
+                .unwrap_or(symbol_raw)
+                .to_uppercase();
             let asset = Asset::from_symbol(&symbol, "Convex");
 
             let apy = pool.apy_base.unwrap_or(0.0);
             let reward = pool.apy_reward.unwrap_or(0.0);
             let tvl = pool.tvl_usd.unwrap_or(0.0);
 
-            if tvl < 1000.0 || apy > 1000.0 { continue; }
+            if tvl < 1000.0 || apy > 1000.0 {
+                continue;
+            }
 
             rates.push(ProtocolRate {
                 protocol: Protocol::Convex,

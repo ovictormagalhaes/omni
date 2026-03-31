@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 const ORCA_API_URL: &str = "https://api.orca.so/v2/solana/pools?minTvl=10000&size=500";
 
@@ -115,17 +115,23 @@ impl OrcaIndexer {
             return None;
         }
 
-        let token0_symbol = pool.token_a.as_ref()
+        let token0_symbol = pool
+            .token_a
+            .as_ref()
             .and_then(|t| t.symbol.as_deref())
             .unwrap_or("UNKNOWN");
-        let token1_symbol = pool.token_b.as_ref()
+        let token1_symbol = pool
+            .token_b
+            .as_ref()
             .and_then(|t| t.symbol.as_deref())
             .unwrap_or("UNKNOWN");
 
         let token0 = Asset::from_symbol(token0_symbol, "Orca");
         let token1 = Asset::from_symbol(token1_symbol, "Orca");
 
-        let tvl_usd: f64 = pool.tvl_usdc.as_deref()
+        let tvl_usd: f64 = pool
+            .tvl_usdc
+            .as_deref()
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);
 
@@ -137,31 +143,37 @@ impl OrcaIndexer {
 
         let stats = pool.stats.as_ref();
 
-        let volume_24h: f64 = stats.and_then(|s| s.day.as_ref())
+        let volume_24h: f64 = stats
+            .and_then(|s| s.day.as_ref())
             .and_then(|d| d.volume.as_deref())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);
-        let volume_7d: f64 = stats.and_then(|s| s.week.as_ref())
+        let volume_7d: f64 = stats
+            .and_then(|s| s.week.as_ref())
             .and_then(|d| d.volume.as_deref())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);
 
-        let fees_24h: f64 = stats.and_then(|s| s.day.as_ref())
+        let fees_24h: f64 = stats
+            .and_then(|s| s.day.as_ref())
             .and_then(|d| d.fees.as_deref())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);
-        let fees_7d: f64 = stats.and_then(|s| s.week.as_ref())
+        let fees_7d: f64 = stats
+            .and_then(|s| s.week.as_ref())
             .and_then(|d| d.fees.as_deref())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);
 
         // yieldOverTvl is a decimal ratio for the period (fees+rewards / tvl)
         // Convert to annualized APR percentage
-        let yield_24h: f64 = stats.and_then(|s| s.day.as_ref())
+        let yield_24h: f64 = stats
+            .and_then(|s| s.day.as_ref())
             .and_then(|d| d.yield_over_tvl.as_deref())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);
-        let yield_7d: f64 = stats.and_then(|s| s.week.as_ref())
+        let yield_7d: f64 = stats
+            .and_then(|s| s.week.as_ref())
             .and_then(|d| d.yield_over_tvl.as_deref())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);
@@ -170,7 +182,8 @@ impl OrcaIndexer {
         let fee_apr_24h = yield_24h * 365.0 * 100.0;
         let fee_apr_7d = (yield_7d / 7.0) * 365.0 * 100.0;
 
-        let rewards_24h: f64 = stats.and_then(|s| s.day.as_ref())
+        let rewards_24h: f64 = stats
+            .and_then(|s| s.day.as_ref())
             .and_then(|d| d.rewards.as_deref())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);

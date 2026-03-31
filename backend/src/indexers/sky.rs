@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Sky (formerly Maker) - BlockAnalitica API Integration
@@ -58,7 +58,8 @@ impl SkyIndexer {
 
         tracing::info!("[Sky] Fetching rates from BlockAnalitica API");
 
-        let response = self.client
+        let response = self
+            .client
             .get(SKY_API_URL)
             .header("Accept", "application/json")
             .send()
@@ -89,12 +90,15 @@ impl SkyIndexer {
         let mut rates = Vec::new();
 
         // Sky Savings Rate (sUSDS) — main savings product
-        let ssr_apy = data.sky_savings_rate_apy
+        let ssr_apy = data
+            .sky_savings_rate_apy
             .as_deref()
             .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(0.0) * 100.0; // API returns decimal (0.0375 = 3.75%)
+            .unwrap_or(0.0)
+            * 100.0; // API returns decimal (0.0375 = 3.75%)
 
-        let ssr_tvl = data.sky_savings_rate_tvl
+        let ssr_tvl = data
+            .sky_savings_rate_tvl
             .as_deref()
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(0.0);
@@ -125,12 +129,15 @@ impl SkyIndexer {
         }
 
         // stUSD rate
-        let stusds_rate = data.stusds_rate
+        let stusds_rate = data
+            .stusds_rate
             .as_deref()
             .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(0.0) * 100.0;
+            .unwrap_or(0.0)
+            * 100.0;
 
-        let stusds_tvl = data.stusds_tvl
+        let stusds_tvl = data
+            .stusds_tvl
             .as_deref()
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(0.0);
@@ -196,15 +203,21 @@ mod tests {
     async fn test_fetch_rates() {
         let indexer = SkyIndexer::new();
         let result = indexer.fetch_rates(&Chain::Ethereum).await;
-        assert!(result.is_ok(), "Failed to fetch Sky rates: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fetch Sky rates: {:?}",
+            result.err()
+        );
 
         let rates = result.unwrap();
         println!("Sky: {} rates from BlockAnalitica API", rates.len());
         assert!(!rates.is_empty(), "Sky should return rates");
 
         for rate in &rates {
-            println!("  {} {}: APY {:.2}%, TVL ${}",
-                rate.protocol, rate.asset, rate.supply_apy, rate.total_liquidity);
+            println!(
+                "  {} {}: APY {:.2}%, TVL ${}",
+                rate.protocol, rate.asset, rate.supply_apy, rate.total_liquidity
+            );
         }
     }
 

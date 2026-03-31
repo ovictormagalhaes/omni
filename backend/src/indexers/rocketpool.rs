@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // Rocket Pool - Decentralized Ethereum Staking
 // Provides rETH liquid staking token
@@ -36,11 +36,12 @@ impl RocketPoolIndexer {
         }
 
         tracing::info!("Fetching Rocket Pool staking APR from official API");
-        
+
         // Rocket Pool official API endpoint
         let url = "https://rocketpool.net/api/mainnet/payload";
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(url)
             .header("Accept", "application/json")
             .send()
@@ -52,16 +53,14 @@ impl RocketPoolIndexer {
         }
 
         let rp_response: RocketPoolResponse = response.json().await?;
-        
+
         // Parse APR from string (API returns very long decimal strings)
         // The API returns APR as a percentage value (e.g., "2.41780..." = 2.42%)
-        let supply_apy: f64 = rp_response.reth_apr
-            .parse()
-            .unwrap_or_else(|_| {
-                tracing::warn!("Failed to parse Rocket Pool APR: {}", rp_response.reth_apr);
-                0.0
-            });
-        
+        let supply_apy: f64 = rp_response.reth_apr.parse().unwrap_or_else(|_| {
+            tracing::warn!("Failed to parse Rocket Pool APR: {}", rp_response.reth_apr);
+            0.0
+        });
+
         let mut rates = Vec::new();
 
         rates.push(ProtocolRate {
@@ -74,9 +73,9 @@ impl RocketPoolIndexer {
             rewards: 0.0,
             performance_fee: None,
             active: true,
-            collateral_enabled: false,  // Staking doesn't provide collateral
+            collateral_enabled: false, // Staking doesn't provide collateral
             collateral_ltv: 0.0,
-            available_liquidity: 2_800_000_000,  // Approximate TVL
+            available_liquidity: 2_800_000_000, // Approximate TVL
             total_liquidity: 2_800_000_000,
             utilization_rate: 100.0,
             ltv: 0.0,
@@ -87,7 +86,11 @@ impl RocketPoolIndexer {
             timestamp: Utc::now(),
         });
 
-        tracing::info!("Rocket Pool: fetched {} rates with APY {:.4}%", rates.len(), supply_apy);
+        tracing::info!(
+            "Rocket Pool: fetched {} rates with APY {:.4}%",
+            rates.len(),
+            supply_apy
+        );
         Ok(rates)
     }
 
@@ -124,7 +127,7 @@ mod tests {
         let indexer = RocketPoolIndexer::new();
         let result = indexer.fetch_rates(&Chain::Ethereum).await;
         assert!(result.is_ok());
-        
+
         let rates = result.unwrap();
         assert_eq!(rates.len(), 1);
         assert_eq!(rates[0].asset, Asset::from_symbol("RETH", "Rocket Pool"));

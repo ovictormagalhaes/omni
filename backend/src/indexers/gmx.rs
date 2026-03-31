@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // GMX V2 - Official API
@@ -65,7 +65,12 @@ pub struct GmxIndexer {
 
 impl GmxIndexer {
     pub fn new() -> Self {
-        Self { client: reqwest::Client::builder().timeout(std::time::Duration::from_secs(30)).build().unwrap_or_default() }
+        Self {
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+        }
     }
 
     fn base_url(chain: &Chain) -> &'static str {
@@ -93,9 +98,18 @@ impl GmxIndexer {
 
         // Fetch markets, APY, and market info in parallel
         let (markets_resp, apy_resp, info_resp) = tokio::join!(
-            self.client.get(format!("{}/markets", base)).timeout(timeout).send(),
-            self.client.get(format!("{}/apy?period=7d", base)).timeout(timeout).send(),
-            self.client.get(format!("{}/markets/info", base)).timeout(timeout).send(),
+            self.client
+                .get(format!("{}/markets", base))
+                .timeout(timeout)
+                .send(),
+            self.client
+                .get(format!("{}/apy?period=7d", base))
+                .timeout(timeout)
+                .send(),
+            self.client
+                .get(format!("{}/markets/info", base))
+                .timeout(timeout)
+                .send(),
         );
 
         let markets_data: GmxMarketsResponse = markets_resp?.json().await?;
@@ -105,21 +119,21 @@ impl GmxIndexer {
         let liquidity_map: HashMap<String, f64> = match info_resp {
             Ok(resp) if resp.status().is_success() => {
                 match resp.json::<GmxMarketsInfoResponse>().await {
-                    Ok(info) => {
-                        info.markets.unwrap_or_default()
-                            .into_iter()
-                            .filter_map(|e| {
-                                let addr = e.market_token?.to_lowercase();
-                                let long = Self::parse_usd30(
-                                    e.available_liquidity_long.as_deref().unwrap_or("0"),
-                                );
-                                let short = Self::parse_usd30(
-                                    e.available_liquidity_short.as_deref().unwrap_or("0"),
-                                );
-                                Some((addr, long + short))
-                            })
-                            .collect()
-                    }
+                    Ok(info) => info
+                        .markets
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|e| {
+                            let addr = e.market_token?.to_lowercase();
+                            let long = Self::parse_usd30(
+                                e.available_liquidity_long.as_deref().unwrap_or("0"),
+                            );
+                            let short = Self::parse_usd30(
+                                e.available_liquidity_short.as_deref().unwrap_or("0"),
+                            );
+                            Some((addr, long + short))
+                        })
+                        .collect(),
                     Err(e) => {
                         tracing::warn!("[GMX] Failed to parse markets/info: {}", e);
                         HashMap::new()

@@ -3,8 +3,8 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::models::{Protocol, Chain};
 use crate::indexers::uniswap_v3::SUBGRAPH_IDS;
+use crate::models::{Chain, Protocol};
 
 /// Historical data point for a liquidity pool
 #[derive(Debug, Clone)]
@@ -100,7 +100,8 @@ impl PoolHistoricalFetcher {
     ) -> Result<Vec<PoolHistoricalDataPoint>> {
         match protocol {
             Protocol::Uniswap => {
-                self.fetch_uniswap_v3_pool_history(chain, pool_address, start_date, end_date).await
+                self.fetch_uniswap_v3_pool_history(chain, pool_address, start_date, end_date)
+                    .await
             }
             _ => {
                 tracing::debug!("Pool historical fetcher not implemented for {:?}", protocol);
@@ -125,7 +126,8 @@ impl PoolHistoricalFetcher {
 
         match protocol {
             Protocol::Uniswap => {
-                self.fetch_uniswap_v3_batch(chain, pool_addresses, start_date, end_date).await
+                self.fetch_uniswap_v3_batch(chain, pool_addresses, start_date, end_date)
+                    .await
             }
             _ => Ok(HashMap::new()),
         }
@@ -177,7 +179,8 @@ impl PoolHistoricalFetcher {
         let chunk_size = 30;
 
         for chunk in pool_addresses.chunks(chunk_size) {
-            let pool_list: Vec<String> = chunk.iter()
+            let pool_list: Vec<String> = chunk
+                .iter()
                 .map(|a| format!("\"{}\"", a.to_lowercase()))
                 .collect();
             let pool_in = pool_list.join(", ");
@@ -203,35 +206,51 @@ impl PoolHistoricalFetcher {
 
             tracing::debug!(
                 "[Pool Backfill] Batch fetching poolDayData for {} pools on {:?}",
-                chunk.len(), chain
+                chunk.len(),
+                chain
             );
 
-            let response: BatchPoolDayDataResponse = match self.client
-                .post(&url)
-                .json(&query)
-                .send()
-                .await
-            {
-                Ok(resp) => match resp.json().await {
-                    Ok(data) => data,
+            let response: BatchPoolDayDataResponse =
+                match self.client.post(&url).json(&query).send().await {
+                    Ok(resp) => match resp.json().await {
+                        Ok(data) => data,
+                        Err(e) => {
+                            tracing::warn!(
+                                "[Pool Backfill] Failed to parse batch response on {:?}: {}",
+                                chain,
+                                e
+                            );
+                            continue;
+                        }
+                    },
                     Err(e) => {
-                        tracing::warn!("[Pool Backfill] Failed to parse batch response on {:?}: {}", chain, e);
+                        tracing::warn!(
+                            "[Pool Backfill] Batch request failed on {:?}: {}",
+                            chain,
+                            e
+                        );
                         continue;
                     }
-                },
-                Err(e) => {
-                    tracing::warn!("[Pool Backfill] Batch request failed on {:?}: {}", chain, e);
-                    continue;
-                }
-            };
+                };
 
             if let Some(data) = response.data {
                 for entry in data.pool_day_datas {
-                    let tvl: f64 = match entry.tvl_usd.parse() { Ok(v) => v, Err(_) => continue };
-                    let volume: f64 = match entry.volume_usd.parse() { Ok(v) => v, Err(_) => continue };
-                    let fees: f64 = match entry.fees_usd.parse() { Ok(v) => v, Err(_) => continue };
+                    let tvl: f64 = match entry.tvl_usd.parse() {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let volume: f64 = match entry.volume_usd.parse() {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let fees: f64 = match entry.fees_usd.parse() {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
 
-                    if tvl <= 0.0 { continue; }
+                    if tvl <= 0.0 {
+                        continue;
+                    }
 
                     let date = match DateTime::from_timestamp(entry.date, 0) {
                         Some(d) => d,
@@ -239,19 +258,24 @@ impl PoolHistoricalFetcher {
                     };
 
                     let pool_addr = entry.pool.id.to_lowercase();
-                    all_results.entry(pool_addr).or_default().push(PoolHistoricalDataPoint {
-                        date,
-                        tvl_usd: tvl,
-                        volume_usd: volume,
-                        fees_usd: fees,
-                    });
+                    all_results
+                        .entry(pool_addr)
+                        .or_default()
+                        .push(PoolHistoricalDataPoint {
+                            date,
+                            tvl_usd: tvl,
+                            volume_usd: volume,
+                            fees_usd: fees,
+                        });
                 }
             }
         }
 
         tracing::info!(
             "[Pool Backfill] Batch: got data for {} pools on {:?} ({} total addresses)",
-            all_results.len(), chain, pool_addresses.len()
+            all_results.len(),
+            chain,
+            pool_addresses.len()
         );
 
         Ok(all_results)
@@ -317,12 +341,14 @@ impl PoolHistoricalFetcher {
 
         tracing::debug!(
             "[Pool Backfill] Fetching poolDayData for {} on {:?} ({} to {})",
-            pool_addr, chain,
+            pool_addr,
+            chain,
             start_date.format("%Y-%m-%d"),
             end_date.format("%Y-%m-%d")
         );
 
-        let response: PoolDayDataResponse = self.client
+        let response: PoolDayDataResponse = self
+            .client
             .post(&url)
             .json(&query)
             .send()
@@ -362,7 +388,9 @@ impl PoolHistoricalFetcher {
 
         tracing::debug!(
             "[Pool Backfill] Got {} daily data points for pool {} on {:?}",
-            points.len(), pool_addr, chain
+            points.len(),
+            pool_addr,
+            chain
         );
 
         Ok(points)

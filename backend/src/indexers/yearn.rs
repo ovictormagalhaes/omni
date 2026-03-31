@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Yearn Finance - Official yDaemon API
@@ -73,7 +73,10 @@ impl YearnIndexer {
             _ => return Ok(vec![]),
         };
 
-        tracing::info!("[Yearn] Fetching vaults for chain {} from yDaemon API", chain_id);
+        tracing::info!(
+            "[Yearn] Fetching vaults for chain {} from yDaemon API",
+            chain_id
+        );
 
         let url = format!("https://ydaemon.yearn.fi/{}/vaults/all", chain_id);
         let resp = self.client.get(&url).send().await?;
@@ -93,7 +96,9 @@ impl YearnIndexer {
             }
 
             // Use netAPR (historical) or forwardAPR (projected)
-            let apr = vault.apr.net_apr
+            let apr = vault
+                .apr
+                .net_apr
                 .or_else(|| vault.apr.forward_apr.as_ref().and_then(|f| f.net_apr))
                 .unwrap_or(0.0);
 
@@ -102,7 +107,8 @@ impl YearnIndexer {
             }
 
             // Extract underlying token symbol from vault symbol (yvUSDC-2 -> USDC)
-            let symbol = vault.symbol
+            let symbol = vault
+                .symbol
                 .trim_start_matches("yv")
                 .trim_start_matches("ys")
                 .split('-')
@@ -136,7 +142,12 @@ impl YearnIndexer {
             });
         }
 
-        tracing::info!("[Yearn] Fetched {} vaults for {:?} (from {} total)", rates.len(), chain, vaults.len());
+        tracing::info!(
+            "[Yearn] Fetched {} vaults for {:?} (from {} total)",
+            rates.len(),
+            chain,
+            vaults.len()
+        );
         Ok(rates)
     }
 
@@ -152,7 +163,12 @@ impl RateIndexer for YearnIndexer {
     }
 
     fn supported_chains(&self) -> Vec<Chain> {
-        vec![Chain::Ethereum, Chain::Arbitrum, Chain::Base, Chain::Polygon]
+        vec![
+            Chain::Ethereum,
+            Chain::Arbitrum,
+            Chain::Base,
+            Chain::Polygon,
+        ]
     }
 
     async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {

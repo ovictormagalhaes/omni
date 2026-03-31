@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Lido Finance - Official API
@@ -57,7 +57,8 @@ impl LidoIndexer {
         tracing::info!("[Lido] Fetching rates from official API");
 
         // Fetch APR
-        let apr_resp = self.client
+        let apr_resp = self
+            .client
             .get("https://eth-api.lido.fi/v1/protocol/steth/apr/sma")
             .send()
             .await?;
@@ -71,7 +72,8 @@ impl LidoIndexer {
         let apy = apr_data.data.sma_apr / 100.0; // API returns percentage (e.g. 2.5 = 2.5%)
 
         // Fetch TVL
-        let tvl = match self.client
+        let tvl = match self
+            .client
             .get("https://eth-api.lido.fi/v1/protocol/steth/stats")
             .send()
             .await
@@ -183,7 +185,10 @@ mod tests {
     async fn test_unsupported_chain_returns_empty() {
         let indexer = LidoIndexer::new();
         let rates = indexer.fetch_rates(&Chain::Solana).await.unwrap();
-        assert!(rates.is_empty(), "Lido indexer should return empty for Solana (only Ethereum impl)");
+        assert!(
+            rates.is_empty(),
+            "Lido indexer should return empty for Solana (only Ethereum impl)"
+        );
     }
 
     #[test]

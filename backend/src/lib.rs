@@ -1,13 +1,15 @@
 // Library exports for testing and potential reuse
 
-pub mod models;
-pub mod indexers;
-pub mod services;
-pub mod routes;
 pub mod config;
+pub mod indexers;
+pub mod models;
+pub mod routes;
+pub mod services;
 
 pub use config::Config;
-pub use services::{HistoricalDataService, RealtimeService, PoolHistoricalService, PoolRealtimeService};
+pub use services::{
+    HistoricalDataService, PoolHistoricalService, PoolRealtimeService, RealtimeService,
+};
 
 #[derive(Clone)]
 pub struct AppState {

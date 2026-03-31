@@ -286,7 +286,7 @@ export default function PoolDetailDrawer({ pool, onClose }: PoolDetailDrawerProp
                       <Tooltip
                         contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}
                         labelFormatter={(label) => formatDate(String(label))}
-                        formatter={(value: number) => [metric.formatValue(value), metric.tooltipLabel]}
+                        formatter={(value) => [metric.formatValue(Number(value)), metric.tooltipLabel]}
                       />
                       <Area
                         type="monotone"

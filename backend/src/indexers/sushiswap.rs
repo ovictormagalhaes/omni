@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 // ============================================================================
 // SushiSwap V3 — The Graph Subgraph (Uniswap V3 fork)
@@ -132,20 +132,22 @@ impl SushiSwapIndexer {
             "#
         });
 
-        tracing::info!("[SushiSwap] Fetching pools for {:?} from subgraph {}", chain, subgraph_id);
+        tracing::info!(
+            "[SushiSwap] Fetching pools for {:?} from subgraph {}",
+            chain,
+            subgraph_id
+        );
 
-        let http_response = self.client
-            .post(&url)
-            .json(&query)
-            .send()
-            .await?;
+        let http_response = self.client.post(&url).json(&query).send().await?;
 
         let status = http_response.status();
         if !status.is_success() {
             let body = http_response.text().await.unwrap_or_default();
             tracing::warn!(
                 "[SushiSwap] HTTP {} for {:?}: {}",
-                status, chain, &body[..body.len().min(200)]
+                status,
+                chain,
+                &body[..body.len().min(200)]
             );
             return Ok(vec![]);
         }
@@ -156,7 +158,9 @@ impl SushiSwapIndexer {
             Err(e) => {
                 tracing::warn!(
                     "[SushiSwap] Failed to parse response for {:?}: {} — body: {}",
-                    chain, e, &body[..body.len().min(200)]
+                    chain,
+                    e,
+                    &body[..body.len().min(200)]
                 );
                 return Ok(vec![]);
             }
@@ -199,7 +203,11 @@ impl SushiSwapIndexer {
             let fees: f64 = day.fees_usd.parse().unwrap_or(0.0);
             let vol: f64 = day.volume_usd.parse().unwrap_or(0.0);
             let day_tvl: f64 = day.tvl_usd.parse().unwrap_or(tvl);
-            let apr = if day_tvl > 0.0 { (fees * 365.0 / day_tvl) * 100.0 } else { 0.0 };
+            let apr = if day_tvl > 0.0 {
+                (fees * 365.0 / day_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees, vol, apr)
         } else {
             (0.0, 0.0, 0.0)
@@ -208,20 +216,31 @@ impl SushiSwapIndexer {
         // 7-day averages — extrapolate to 7 days when fewer days of data are available
         let (fees_7d, volume_7d, fee_apr_7d) = if !pool.pool_day_data.is_empty() {
             let days = pool.pool_day_data.len() as f64;
-            let total_fees: f64 = pool.pool_day_data.iter()
+            let total_fees: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.fees_usd.parse::<f64>().unwrap_or(0.0))
                 .sum();
-            let total_volume: f64 = pool.pool_day_data.iter()
+            let total_volume: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.volume_usd.parse::<f64>().unwrap_or(0.0))
                 .sum();
-            let avg_tvl: f64 = pool.pool_day_data.iter()
+            let avg_tvl: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.tvl_usd.parse::<f64>().unwrap_or(0.0))
-                .sum::<f64>() / days;
+                .sum::<f64>()
+                / days;
             let daily_avg_fees = total_fees / days;
             let daily_avg_volume = total_volume / days;
             let fees_7d = daily_avg_fees * 7.0;
             let volume_7d = daily_avg_volume * 7.0;
-            let apr = if avg_tvl > 0.0 { (daily_avg_fees * 365.0 / avg_tvl) * 100.0 } else { 0.0 };
+            let apr = if avg_tvl > 0.0 {
+                (daily_avg_fees * 365.0 / avg_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees_7d, volume_7d, apr)
         } else {
             (0.0, 0.0, 0.0)
@@ -265,7 +284,8 @@ impl SushiSwapIndexer {
     }
 
     fn get_subgraph_id(chain_slug: &str) -> Option<&'static str> {
-        SUBGRAPH_IDS.iter()
+        SUBGRAPH_IDS
+            .iter()
             .find(|(slug, _)| *slug == chain_slug)
             .map(|(_, id)| *id)
     }
@@ -278,10 +298,7 @@ impl SushiSwapIndexer {
             Chain::Avalanche => "43114",
             _ => "1",
         };
-        format!(
-            "https://www.sushi.com/pool/{}/{}",
-            chain_id, pool_address
-        )
+        format!("https://www.sushi.com/pool/{}/{}", chain_id, pool_address)
     }
 }
 
@@ -292,7 +309,12 @@ impl PoolIndexer for SushiSwapIndexer {
     }
 
     fn supported_chains(&self) -> Vec<Chain> {
-        vec![Chain::Ethereum, Chain::Arbitrum, Chain::Base, Chain::Avalanche]
+        vec![
+            Chain::Ethereum,
+            Chain::Arbitrum,
+            Chain::Base,
+            Chain::Avalanche,
+        ]
     }
 
     async fn fetch_pools(&self, chain: &Chain) -> Result<Vec<PoolRate>> {

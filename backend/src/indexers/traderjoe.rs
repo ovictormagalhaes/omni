@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 // ============================================================================
 // Trader Joe V2.1 (Liquidity Book) — The Graph Subgraph
@@ -16,9 +16,8 @@ use super::PoolIndexer;
 // ============================================================================
 
 /// TraderJoe V2 LB subgraph IDs on The Graph decentralized network
-const SUBGRAPH_IDS: &[(&str, &str)] = &[
-    ("avalanche", "6KD9JYCg2qa3TxNK3tLdhj5zuZTABoLLNcnUZXKG9vuH"),
-];
+const SUBGRAPH_IDS: &[(&str, &str)] =
+    &[("avalanche", "6KD9JYCg2qa3TxNK3tLdhj5zuZTABoLLNcnUZXKG9vuH")];
 
 #[derive(Clone)]
 pub struct TraderJoeIndexer {
@@ -143,18 +142,23 @@ impl TraderJoeIndexer {
             "#
         });
 
-        tracing::info!("[TraderJoe] Fetching LB pairs for {:?} from subgraph {}", chain, subgraph_id);
+        tracing::info!(
+            "[TraderJoe] Fetching LB pairs for {:?} from subgraph {}",
+            chain,
+            subgraph_id
+        );
 
-        let http_response = self.client
-            .post(&url)
-            .json(&query)
-            .send()
-            .await?;
+        let http_response = self.client.post(&url).json(&query).send().await?;
 
         let status = http_response.status();
         if !status.is_success() {
             let body = http_response.text().await.unwrap_or_default();
-            tracing::warn!("[TraderJoe] HTTP {} for {:?}: {}", status, chain, &body[..body.len().min(200)]);
+            tracing::warn!(
+                "[TraderJoe] HTTP {} for {:?}: {}",
+                status,
+                chain,
+                &body[..body.len().min(200)]
+            );
             return Ok(vec![]);
         }
 
@@ -162,7 +166,12 @@ impl TraderJoeIndexer {
         let response: GraphQLResponse = match serde_json::from_str(&body) {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!("[TraderJoe] Failed to parse response for {:?}: {} — body: {}", chain, e, &body[..body.len().min(200)]);
+                tracing::warn!(
+                    "[TraderJoe] Failed to parse response for {:?}: {} — body: {}",
+                    chain,
+                    e,
+                    &body[..body.len().min(200)]
+                );
                 return Ok(vec![]);
             }
         };
@@ -175,7 +184,11 @@ impl TraderJoeIndexer {
             }
         };
 
-        tracing::info!("[TraderJoe] Fetched {} LB pairs for {:?}", lb_pairs.len(), chain);
+        tracing::info!(
+            "[TraderJoe] Fetched {} LB pairs for {:?}",
+            lb_pairs.len(),
+            chain
+        );
 
         let rates: Vec<PoolRate> = lb_pairs
             .into_iter()
@@ -197,7 +210,9 @@ impl TraderJoeIndexer {
 
         // Fee: baseFeePct is a decimal percentage (e.g. "0.20" = 0.20% = 20 bps)
         // Fallback: estimate from binStep (higher binStep = higher base fee)
-        let fee_rate_bps: u32 = pair.base_fee_pct.as_deref()
+        let fee_rate_bps: u32 = pair
+            .base_fee_pct
+            .as_deref()
             .and_then(|s| s.parse::<f64>().ok())
             .map(|pct| (pct * 100.0).round() as u32)
             .unwrap_or_else(|| {
@@ -214,7 +229,11 @@ impl TraderJoeIndexer {
             let fees: f64 = day.fees_usd.parse().unwrap_or(0.0);
             let vol: f64 = day.volume_usd.parse().unwrap_or(0.0);
             let day_tvl: f64 = day.total_value_locked_usd.parse().unwrap_or(tvl);
-            let apr = if day_tvl > 0.0 { (fees * 365.0 / day_tvl) * 100.0 } else { 0.0 };
+            let apr = if day_tvl > 0.0 {
+                (fees * 365.0 / day_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees, vol, apr)
         } else {
             (0.0, 0.0, 0.0)
@@ -223,20 +242,28 @@ impl TraderJoeIndexer {
         // 7-day averages — extrapolate to 7 days when fewer days of data are available
         let (fees_7d, volume_7d, fee_apr_7d) = if !day_data.is_empty() {
             let days = day_data.len() as f64;
-            let total_fees: f64 = day_data.iter()
+            let total_fees: f64 = day_data
+                .iter()
                 .map(|d| d.fees_usd.parse::<f64>().unwrap_or(0.0))
                 .sum();
-            let total_volume: f64 = day_data.iter()
+            let total_volume: f64 = day_data
+                .iter()
                 .map(|d| d.volume_usd.parse::<f64>().unwrap_or(0.0))
                 .sum();
-            let avg_tvl: f64 = day_data.iter()
+            let avg_tvl: f64 = day_data
+                .iter()
                 .map(|d| d.total_value_locked_usd.parse::<f64>().unwrap_or(0.0))
-                .sum::<f64>() / days;
+                .sum::<f64>()
+                / days;
             let daily_avg_fees = total_fees / days;
             let daily_avg_volume = total_volume / days;
             let fees_7d = daily_avg_fees * 7.0;
             let volume_7d = daily_avg_volume * 7.0;
-            let apr = if avg_tvl > 0.0 { (daily_avg_fees * 365.0 / avg_tvl) * 100.0 } else { 0.0 };
+            let apr = if avg_tvl > 0.0 {
+                (daily_avg_fees * 365.0 / avg_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees_7d, volume_7d, apr)
         } else {
             (0.0, 0.0, 0.0)
@@ -275,7 +302,10 @@ impl TraderJoeIndexer {
             Chain::Arbitrum => "arbitrum",
             _ => "avalanche",
         };
-        format!("https://traderjoexyz.com/{}/pool/v2/{}", chain_slug, pool_address)
+        format!(
+            "https://traderjoexyz.com/{}/pool/v2/{}",
+            chain_slug, pool_address
+        )
     }
 }
 

@@ -1,6 +1,8 @@
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use omni_backend::{Config, HistoricalDataService, PoolHistoricalService, PoolRealtimeService, services};
+use omni_backend::{
+    services, Config, HistoricalDataService, PoolHistoricalService, PoolRealtimeService,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -93,15 +95,25 @@ async fn run_collection(config: Config, backfill_only: bool) -> anyhow::Result<(
     tracing::info!("  Snapshots updated: {}", result.snapshots_updated);
     tracing::info!("  New vaults discovered: {}", result.new_vaults_discovered);
     tracing::info!("  Backfill snapshots: {}", result.backfill_snapshots);
-    tracing::info!("  Vaults with real history: {}", result.vaults_with_real_history);
-    tracing::info!("  Vaults skipped (no history): {}", result.vaults_skipped_no_history);
+    tracing::info!(
+        "  Vaults with real history: {}",
+        result.vaults_with_real_history
+    );
+    tracing::info!(
+        "  Vaults skipped (no history): {}",
+        result.vaults_skipped_no_history
+    );
     tracing::info!("  Duration: {}s", result.duration_seconds);
     tracing::info!("  Skipped: {}", result.skipped);
 
     Ok(())
 }
 
-async fn run_reset_partial(config: Config, protocol: String, chain: Option<String>) -> anyhow::Result<()> {
+async fn run_reset_partial(
+    config: Config,
+    protocol: String,
+    chain: Option<String>,
+) -> anyhow::Result<()> {
     let label = match &chain {
         Some(c) => format!("{} on {}", protocol, c),
         None => protocol.clone(),
@@ -117,31 +129,48 @@ async fn run_reset_partial(config: Config, protocol: String, chain: Option<Strin
         filter.insert("chain", c);
     }
 
-    let snap = db.collection::<bson::Document>("rate_snapshots")
-        .delete_many(filter.clone()).await?;
+    let snap = db
+        .collection::<bson::Document>("rate_snapshots")
+        .delete_many(filter.clone())
+        .await?;
     tracing::info!("  Deleted {} from rate_snapshots", snap.deleted_count);
 
-    let rt = db.collection::<bson::Document>("rate_realtime")
-        .delete_many(filter.clone()).await?;
+    let rt = db
+        .collection::<bson::Document>("rate_realtime")
+        .delete_many(filter.clone())
+        .await?;
     tracing::info!("  Deleted {} from rate_realtime", rt.deleted_count);
 
-    let pool_snap = db.collection::<bson::Document>("pool_snapshots")
-        .delete_many(filter.clone()).await?;
+    let pool_snap = db
+        .collection::<bson::Document>("pool_snapshots")
+        .delete_many(filter.clone())
+        .await?;
     tracing::info!("  Deleted {} from pool_snapshots", pool_snap.deleted_count);
 
-    let pool_rt = db.collection::<bson::Document>("pool_realtime")
-        .delete_many(filter).await?;
+    let pool_rt = db
+        .collection::<bson::Document>("pool_realtime")
+        .delete_many(filter)
+        .await?;
     tracing::info!("  Deleted {} from pool_realtime", pool_rt.deleted_count);
 
-    let total = snap.deleted_count + rt.deleted_count + pool_snap.deleted_count + pool_rt.deleted_count;
-    tracing::info!("Partial reset complete: {} total documents deleted for {}", total, label);
+    let total =
+        snap.deleted_count + rt.deleted_count + pool_snap.deleted_count + pool_rt.deleted_count;
+    tracing::info!(
+        "Partial reset complete: {} total documents deleted for {}",
+        total,
+        label
+    );
 
     tracing::info!("Starting full data collection...");
     run_collection(config, false).await
 }
 
 async fn run_purge(config: Config, protocols: &[String]) -> anyhow::Result<()> {
-    tracing::info!("Purging data for {} protocols: {}", protocols.len(), protocols.join(", "));
+    tracing::info!(
+        "Purging data for {} protocols: {}",
+        protocols.len(),
+        protocols.join(", ")
+    );
 
     let db = mongodb::Client::with_uri_str(&config.mongodb_url)
         .await?
@@ -149,11 +178,18 @@ async fn run_purge(config: Config, protocols: &[String]) -> anyhow::Result<()> {
 
     let filter = bson::doc! { "protocol": { "$in": protocols } };
 
-    let collections = ["rate_snapshots", "rate_realtime", "pool_snapshots", "pool_realtime"];
+    let collections = [
+        "rate_snapshots",
+        "rate_realtime",
+        "pool_snapshots",
+        "pool_realtime",
+    ];
     let mut total = 0u64;
     for coll_name in &collections {
-        let result = db.collection::<bson::Document>(coll_name)
-            .delete_many(filter.clone()).await?;
+        let result = db
+            .collection::<bson::Document>(coll_name)
+            .delete_many(filter.clone())
+            .await?;
         tracing::info!("  Deleted {} from {}", result.deleted_count, coll_name);
         total += result.deleted_count;
     }

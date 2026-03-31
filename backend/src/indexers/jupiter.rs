@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Jupiter - Official API Integration (JupSOL Liquid Staking)
@@ -52,7 +52,8 @@ impl JupiterIndexer {
 
         tracing::info!("[Jupiter] Fetching JupSOL APY from official API");
 
-        let response = self.client
+        let response = self
+            .client
             .get(JUPITER_LST_APYS_URL)
             .header("Accept", "application/json")
             .send()
@@ -148,7 +149,11 @@ mod tests {
     async fn test_fetch_rates_solana() {
         let indexer = JupiterIndexer::new();
         let result = indexer.fetch_rates(&Chain::Solana).await;
-        assert!(result.is_ok(), "Failed to fetch Jupiter rates: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fetch Jupiter rates: {:?}",
+            result.err()
+        );
 
         let rates = result.unwrap();
         println!("Jupiter: {} rates from official API", rates.len());

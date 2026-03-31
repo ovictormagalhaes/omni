@@ -2,9 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
-use crate::indexers::defillama_pools::DefiLlamaCache;
 use super::RateIndexer;
+use crate::indexers::defillama_pools::DefiLlamaCache;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Compound V3 (Comet) - DeFiLlama Integration
@@ -50,22 +50,27 @@ impl CompoundIndexer {
             }
         };
 
-        tracing::info!("[Compound V3] Fetching rates for {:?} from DeFiLlama", chain);
+        tracing::info!(
+            "[Compound V3] Fetching rates for {:?} from DeFiLlama",
+            chain
+        );
 
         let pools = match &self.defillama_cache {
             Some(cache) => cache.get_pools().await?.to_vec(),
-            None => {
-                crate::indexers::defillama_pools::fetch_defillama_pools(&self.client).await?
-            }
+            None => crate::indexers::defillama_pools::fetch_defillama_pools(&self.client).await?,
         };
 
         let mut rates = Vec::new();
 
         for pool in &pools {
             let project = pool.project.as_deref().unwrap_or_default();
-            if !project.eq_ignore_ascii_case("compound-v3") { continue; }
+            if !project.eq_ignore_ascii_case("compound-v3") {
+                continue;
+            }
             let ch = pool.chain.as_deref().unwrap_or_default();
-            if !ch.eq_ignore_ascii_case(chain_name) { continue; }
+            if !ch.eq_ignore_ascii_case(chain_name) {
+                continue;
+            }
 
             let symbol_raw = pool.symbol.as_deref().unwrap_or_default();
             let symbol = normalize_symbol(symbol_raw);
@@ -75,8 +80,12 @@ impl CompoundIndexer {
             let supply_reward = pool.apy_reward.unwrap_or(0.0);
             let tvl = pool.tvl_usd.unwrap_or(0.0);
 
-            if tvl < 1000.0 { continue; }
-            if supply_apy > 1000.0 { continue; }
+            if tvl < 1000.0 {
+                continue;
+            }
+            if supply_apy > 1000.0 {
+                continue;
+            }
 
             let pool_id = pool.pool.clone();
 
@@ -107,7 +116,11 @@ impl CompoundIndexer {
             // Borrow rate (DeFiLlama doesn't provide borrow data for compound-v3 in yields)
         }
 
-        tracing::info!("[Compound V3] Fetched {} rates for {:?}", rates.len(), chain);
+        tracing::info!(
+            "[Compound V3] Fetched {} rates for {:?}",
+            rates.len(),
+            chain
+        );
         Ok(rates)
     }
 
@@ -173,16 +186,21 @@ mod tests {
     async fn test_fetch_rates_ethereum() {
         let indexer = CompoundIndexer::new();
         let result = indexer.fetch_rates(&Chain::Ethereum).await;
-        assert!(result.is_ok(), "Failed to fetch Compound rates: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fetch Compound rates: {:?}",
+            result.err()
+        );
 
         let rates = result.unwrap();
         println!("Compound Ethereum: {} rates from DeFiLlama", rates.len());
         assert!(!rates.is_empty(), "Compound should return rates");
 
         for rate in rates.iter().take(5) {
-            println!("  {} {:?} {}: APY {:.2}%, Rewards {:.2}%",
-                rate.protocol, rate.action, rate.asset,
-                rate.supply_apy, rate.rewards);
+            println!(
+                "  {} {:?} {}: APY {:.2}%, Rewards {:.2}%",
+                rate.protocol, rate.action, rate.asset, rate.supply_apy, rate.rewards
+            );
         }
     }
 

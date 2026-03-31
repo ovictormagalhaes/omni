@@ -6,16 +6,13 @@ use tokio::sync::Semaphore;
 use crate::{
     config::Config,
     indexers::{
-        RateIndexer, PoolIndexer,
-        AaveIndexer, KaminoIndexer, MorphoIndexer, FluidIndexer, SparkLendIndexer, JustLendIndexer,
-        EulerIndexer, JupiterIndexer, LidoIndexer, MarinadeIndexer, JitoIndexer, RocketPoolIndexer,
-        RaydiumIndexer, UniswapV3Indexer, UniswapV4Indexer, VenusIndexer,
-        PendleIndexer, EthenaIndexer, CurveIndexer,
-        PancakeSwapIndexer, AerodromeIndexer, VelodromeIndexer,
-        SushiSwapIndexer, CamelotIndexer, TraderJoeIndexer,
-        OrcaIndexer, MeteoraIndexer,
-        SkyIndexer, SiloIndexer, FraxEthIndexer, BalancerIndexer, MaverickIndexer,
-        AuraIndexer, YearnIndexer, GmxIndexer,
+        AaveIndexer, AerodromeIndexer, AuraIndexer, BalancerIndexer, CamelotIndexer, CurveIndexer,
+        EthenaIndexer, EulerIndexer, FluidIndexer, FraxEthIndexer, GmxIndexer, JitoIndexer,
+        JupiterIndexer, JustLendIndexer, KaminoIndexer, LidoIndexer, MarinadeIndexer,
+        MaverickIndexer, MeteoraIndexer, MorphoIndexer, OrcaIndexer, PancakeSwapIndexer,
+        PendleIndexer, PoolIndexer, RateIndexer, RaydiumIndexer, RocketPoolIndexer, SiloIndexer,
+        SkyIndexer, SparkLendIndexer, SushiSwapIndexer, TraderJoeIndexer, UniswapV3Indexer,
+        UniswapV4Indexer, VelodromeIndexer, VenusIndexer, YearnIndexer,
     },
     models::*,
     services::circuit_breaker::CircuitBreaker,
@@ -122,7 +119,10 @@ impl RateAggregator {
             pool_indexers,
             semaphore: Arc::new(Semaphore::new(config.max_concurrent_indexers)),
             indexer_timeout: Duration::from_secs(config.indexer_timeout_secs),
-            circuit_breaker: CircuitBreaker::new(config.cb_failure_threshold, config.cb_cooldown_secs),
+            circuit_breaker: CircuitBreaker::new(
+                config.cb_failure_threshold,
+                config.cb_cooldown_secs,
+            ),
         }
     }
 
@@ -139,7 +139,11 @@ impl RateAggregator {
         let target_chains = query.parse_chains().unwrap_or_else(|| Chain::all());
         let target_protocols = query.parse_protocols().unwrap_or_else(|| Protocol::all());
 
-        tracing::debug!("Target chains: {:?}, Target protocols: {:?}", target_chains, target_protocols);
+        tracing::debug!(
+            "Target chains: {:?}, Target protocols: {:?}",
+            target_chains,
+            target_protocols
+        );
 
         // Spawn one task per (indexer, chain) pair
         type TaskResult = (Protocol, Chain, Result<Vec<ProtocolRate>>, u128);
@@ -172,7 +176,10 @@ impl RateAggregator {
                     let start = Instant::now();
                     let result = match tokio::time::timeout(timeout, idx.fetch_rates(&c)).await {
                         Ok(r) => r,
-                        Err(_) => Err(anyhow::anyhow!("indexer timeout after {}s", timeout.as_secs())),
+                        Err(_) => Err(anyhow::anyhow!(
+                            "indexer timeout after {}s",
+                            timeout.as_secs()
+                        )),
                     };
                     let elapsed = start.elapsed().as_millis();
                     (idx.protocol(), c, result, elapsed)
@@ -188,7 +195,13 @@ impl RateAggregator {
         for task in tasks {
             match task.await {
                 Ok((protocol, chain, Ok(rates), elapsed_ms)) => {
-                    tracing::debug!("{:?}/{:?} returned {} rates in {}ms", protocol, chain, rates.len(), elapsed_ms);
+                    tracing::debug!(
+                        "{:?}/{:?} returned {} rates in {}ms",
+                        protocol,
+                        chain,
+                        rates.len(),
+                        elapsed_ms
+                    );
                     self.circuit_breaker.record_success(&protocol, &chain).await;
                     task_meta.push(IndexerTaskMeta {
                         protocol,
@@ -200,7 +213,13 @@ impl RateAggregator {
                     all_rates.extend(rates);
                 }
                 Ok((protocol, chain, Err(e), elapsed_ms)) => {
-                    tracing::error!("{:?}/{:?} failed in {}ms: {:?}", protocol, chain, elapsed_ms, e);
+                    tracing::error!(
+                        "{:?}/{:?} failed in {}ms: {:?}",
+                        protocol,
+                        chain,
+                        elapsed_ms,
+                        e
+                    );
                     self.circuit_breaker.record_failure(&protocol, &chain).await;
                     task_meta.push(IndexerTaskMeta {
                         protocol,
@@ -260,8 +279,11 @@ impl RateAggregator {
         tracing::debug!("Filtered rates: {}", filtered_rates.len());
 
         // Build URL via trait and convert to RateResult
-        let rate_indexer_map: std::collections::HashMap<Protocol, &Arc<dyn RateIndexer>> =
-            self.rate_indexers.iter().map(|i| (i.protocol(), i)).collect();
+        let rate_indexer_map: std::collections::HashMap<Protocol, &Arc<dyn RateIndexer>> = self
+            .rate_indexers
+            .iter()
+            .map(|i| (i.protocol(), i))
+            .collect();
 
         let results: Vec<RateResult> = filtered_rates
             .into_iter()
@@ -302,7 +324,10 @@ impl RateAggregator {
             })
             .collect();
 
-        Ok(RatesCollectionOutput { rates: results, task_meta })
+        Ok(RatesCollectionOutput {
+            rates: results,
+            task_meta,
+        })
     }
 
     // ========================================================================
@@ -347,7 +372,10 @@ impl RateAggregator {
                     let start = Instant::now();
                     let result = match tokio::time::timeout(timeout, idx.fetch_pools(&c)).await {
                         Ok(r) => r,
-                        Err(_) => Err(anyhow::anyhow!("pool indexer timeout after {}s", timeout.as_secs())),
+                        Err(_) => Err(anyhow::anyhow!(
+                            "pool indexer timeout after {}s",
+                            timeout.as_secs()
+                        )),
                     };
                     let elapsed = start.elapsed().as_millis();
                     (idx.protocol(), c, result, elapsed)
@@ -363,7 +391,13 @@ impl RateAggregator {
         for task in tasks {
             match task.await {
                 Ok((protocol, chain, Ok(rates), elapsed_ms)) => {
-                    tracing::debug!("{:?}/{:?} returned {} pools in {}ms", protocol, chain, rates.len(), elapsed_ms);
+                    tracing::debug!(
+                        "{:?}/{:?} returned {} pools in {}ms",
+                        protocol,
+                        chain,
+                        rates.len(),
+                        elapsed_ms
+                    );
                     self.circuit_breaker.record_success(&protocol, &chain).await;
                     pool_task_meta.push(IndexerTaskMeta {
                         protocol,
@@ -375,7 +409,13 @@ impl RateAggregator {
                     all_pool_rates.extend(rates);
                 }
                 Ok((protocol, chain, Err(e), elapsed_ms)) => {
-                    tracing::error!("{:?}/{:?} pool fetch failed in {}ms: {:?}", protocol, chain, elapsed_ms, e);
+                    tracing::error!(
+                        "{:?}/{:?} pool fetch failed in {}ms: {:?}",
+                        protocol,
+                        chain,
+                        elapsed_ms,
+                        e
+                    );
                     self.circuit_breaker.record_failure(&protocol, &chain).await;
                     pool_task_meta.push(IndexerTaskMeta {
                         protocol,
@@ -392,8 +432,11 @@ impl RateAggregator {
         tracing::debug!("Total pool rates collected: {}", all_pool_rates.len());
 
         // Build URL via trait and convert to PoolResult
-        let pool_indexer_map: std::collections::HashMap<Protocol, &Arc<dyn PoolIndexer>> =
-            self.pool_indexers.iter().map(|i| (i.protocol(), i)).collect();
+        let pool_indexer_map: std::collections::HashMap<Protocol, &Arc<dyn PoolIndexer>> = self
+            .pool_indexers
+            .iter()
+            .map(|i| (i.protocol(), i))
+            .collect();
 
         // Filter and convert
         let cats0 = query.parse_asset_categories_0();
@@ -418,17 +461,34 @@ impl RateAggregator {
                 // Two-sided category filter (same logic as build_pool_filter)
                 match (&cats0, &cats1) {
                     (Some(c0), Some(c1)) => {
-                        let t0_in_c0 = r.token0_categories.iter().any(|c: &AssetCategory| c0.contains(c));
-                        let t1_in_c1 = r.token1_categories.iter().any(|c: &AssetCategory| c1.contains(c));
-                        let t0_in_c1 = r.token0_categories.iter().any(|c: &AssetCategory| c1.contains(c));
-                        let t1_in_c0 = r.token1_categories.iter().any(|c: &AssetCategory| c0.contains(c));
+                        let t0_in_c0 = r
+                            .token0_categories
+                            .iter()
+                            .any(|c: &AssetCategory| c0.contains(c));
+                        let t1_in_c1 = r
+                            .token1_categories
+                            .iter()
+                            .any(|c: &AssetCategory| c1.contains(c));
+                        let t0_in_c1 = r
+                            .token0_categories
+                            .iter()
+                            .any(|c: &AssetCategory| c1.contains(c));
+                        let t1_in_c0 = r
+                            .token1_categories
+                            .iter()
+                            .any(|c: &AssetCategory| c0.contains(c));
                         if !((t0_in_c0 && t1_in_c1) || (t0_in_c1 && t1_in_c0)) {
                             return false;
                         }
                     }
                     (Some(cats), None) | (None, Some(cats)) => {
-                        let has_match = r.token0_categories.iter().any(|c: &AssetCategory| cats.contains(c))
-                            || r.token1_categories.iter().any(|c: &AssetCategory| cats.contains(c));
+                        let has_match = r
+                            .token0_categories
+                            .iter()
+                            .any(|c: &AssetCategory| cats.contains(c))
+                            || r.token1_categories
+                                .iter()
+                                .any(|c: &AssetCategory| cats.contains(c));
                         if !has_match {
                             return false;
                         }
@@ -447,7 +507,8 @@ impl RateAggregator {
                 }
                 if let Some(ref pair) = pair_filter {
                     let pair_upper = r.pair.to_uppercase();
-                    let pair_reversed = format!("{}/{}", r.token1.to_uppercase(), r.token0.to_uppercase());
+                    let pair_reversed =
+                        format!("{}/{}", r.token1.to_uppercase(), r.token0.to_uppercase());
                     if pair_upper != *pair && pair_reversed != *pair {
                         return false;
                     }
@@ -456,9 +517,16 @@ impl RateAggregator {
             })
             .collect();
 
-        results.sort_by(|a, b| b.fee_apr_24h.partial_cmp(&a.fee_apr_24h).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.fee_apr_24h
+                .partial_cmp(&a.fee_apr_24h)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
-        Ok(PoolsCollectionOutput { pools: results, task_meta: pool_task_meta })
+        Ok(PoolsCollectionOutput {
+            pools: results,
+            task_meta: pool_task_meta,
+        })
     }
 }
 

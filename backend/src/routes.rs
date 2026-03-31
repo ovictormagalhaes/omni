@@ -1,25 +1,27 @@
 use axum::{
+    body::Bytes,
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
-    body::Bytes,
 };
 use chrono::Utc;
 use std::sync::Arc;
 
-use crate::{
-    models::*,
-    AppState,
-};
 use crate::models::VaultHistoryResponse;
+use crate::{models::*, AppState};
 
 pub async fn get_rates(
     State(state): State<Arc<AppState>>,
     Query(query): Query<RateQuery>,
 ) -> Result<Json<RateResponse>, AppError> {
-    tracing::info!("Received rate query - action: {:?}, assets: {:?}, chains: {:?}, protocols: {:?}",
-        query.action, query.assets, query.chains, query.protocols);
+    tracing::info!(
+        "Received rate query - action: {:?}, assets: {:?}, chains: {:?}, protocols: {:?}",
+        query.action,
+        query.assets,
+        query.chains,
+        query.protocols
+    );
 
     let page = query.page.max(1);
     let page_size = query.page_size.clamp(1, 100);
@@ -29,7 +31,11 @@ pub async fn get_rates(
 
     let count = results.len();
     let total_liquidity: u64 = results.iter().map(|r| r.liquidity).sum();
-    let total_pages = if total_count == 0 { 0 } else { (total_count + page_size - 1) / page_size };
+    let total_pages = if total_count == 0 {
+        0
+    } else {
+        (total_count + page_size - 1) / page_size
+    };
 
     let response = RateResponse {
         success: true,
@@ -62,7 +68,10 @@ impl IntoResponse for AppError {
         let (status, error_message) = match self {
             AppError::Internal(err) => {
                 tracing::error!("Internal error: {:?}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, "An internal error occurred. Please try again later.".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "An internal error occurred. Please try again later.".to_string(),
+                )
             }
         };
 
@@ -93,7 +102,7 @@ where
 
 /// Backtest to analyze historical performance
 /// GET /api/v1/historical/backtest?start_date=2026-01-01T00:00:00Z&end_date=2026-02-14T00:00:00Z&asset=USDC&action=supply
-/// 
+///
 /// Query parameters:
 /// - start_date (required): ISO 8601 datetime
 /// - end_date (required): ISO 8601 datetime  
@@ -106,17 +115,17 @@ pub async fn backtest(
     Query(params): Query<BacktestQuery>,
 ) -> Result<Json<BacktestResponse>, AppError> {
     tracing::info!("Backtest request: {:?}", params);
-    
+
     // Parse dates
     use chrono::DateTime;
     let start_date = DateTime::parse_from_rfc3339(&params.start_date)
         .map_err(|e| anyhow::anyhow!("Invalid start_date: {}", e))?
         .with_timezone(&Utc);
-        
+
     let end_date = DateTime::parse_from_rfc3339(&params.end_date)
         .map_err(|e| anyhow::anyhow!("Invalid end_date: {}", e))?
         .with_timezone(&Utc);
-    
+
     // Build historical query
     let historical_query = HistoricalQuery {
         start_date,
@@ -126,12 +135,10 @@ pub async fn backtest(
         asset: Some(params.asset.clone()),
         action: params.action.clone(),
     };
-    
+
     // Run backtest
-    let stats = state.historical_service
-        .backtest(historical_query)
-        .await?;
-    
+    let stats = state.historical_service.backtest(historical_query).await?;
+
     Ok(Json(BacktestResponse {
         success: true,
         timestamp: Utc::now(),
@@ -193,7 +200,8 @@ pub async fn vault_history(
     State(state): State<Arc<AppState>>,
     Query(params): Query<VaultHistoryQuery>,
 ) -> Result<Json<VaultHistoryResponse>, AppError> {
-    let data = state.historical_service
+    let data = state
+        .historical_service
         .get_vault_history(
             params.vault_id.as_deref(),
             params.protocol.as_ref(),
@@ -247,7 +255,8 @@ pub async fn pool_history(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PoolHistoryQuery>,
 ) -> Result<Json<PoolHistoryResponse>, AppError> {
-    let data = state.pool_historical_service
+    let data = state
+        .pool_historical_service
         .get_pool_history(
             params.pool_vault_id.as_deref(),
             params.protocol.as_ref(),
@@ -284,14 +293,14 @@ pub async fn score_pool(
 
     tracing::info!(
         "Pool score request - token0: {}, token1: {}, protocol: {:?}, chain: {:?}, fee_tier: {:?}",
-        req.token0, req.token1, req.protocol, req.chain, req.fee_tier
+        req.token0,
+        req.token1,
+        req.protocol,
+        req.chain,
+        req.fee_tier
     );
 
-    let response = crate::services::score::score_pool(
-        &state.pool_realtime_service,
-        &req,
-    )
-    .await?;
+    let response = crate::services::score::score_pool(&state.pool_realtime_service, &req).await?;
 
     Ok(Json(response))
 }
@@ -316,14 +325,13 @@ pub async fn score_lending(
 
     tracing::info!(
         "Lending score request - supplies: {:?}, borrows: {:?}, protocol: {:?}, chain: {:?}",
-        req.supplies, req.borrows, req.protocol, req.chain
+        req.supplies,
+        req.borrows,
+        req.protocol,
+        req.chain
     );
 
-    let response = crate::services::score::score_lending(
-        &state.realtime_service,
-        &req,
-    )
-    .await?;
+    let response = crate::services::score::score_lending(&state.realtime_service, &req).await?;
 
     Ok(Json(response))
 }
@@ -342,7 +350,11 @@ pub async fn get_pools(
     let (results, total_count) = state.pool_realtime_service.query_pools(&query).await?;
 
     let count = results.len();
-    let total_pages = if total_count == 0 { 0 } else { (total_count + page_size) / page_size };
+    let total_pages = if total_count == 0 {
+        0
+    } else {
+        (total_count + page_size) / page_size
+    };
 
     Ok(Json(PoolResponse {
         success: true,

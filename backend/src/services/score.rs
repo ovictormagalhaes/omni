@@ -39,11 +39,16 @@ pub async fn score_pool(
 
     tracing::info!(
         "Pool score: found {} comparable pools for normalized_pair={}",
-        comparable.len(), target_normalized
+        comparable.len(),
+        target_normalized
     );
 
     // Sort by fee_apr_7d (more reliable than total_apr which can be inflated by rewards on dead pools)
-    comparable.sort_by(|a, b| b.fee_apr_7d.partial_cmp(&a.fee_apr_7d).unwrap_or(std::cmp::Ordering::Equal));
+    comparable.sort_by(|a, b| {
+        b.fee_apr_7d
+            .partial_cmp(&a.fee_apr_7d)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let user_pool_index = if req.protocol.is_some() || req.chain.is_some() {
         let t0_sym = token0_asset.symbol();
@@ -54,17 +59,23 @@ pub async fn score_pool(
         // Log what we're looking for
         tracing::info!(
             "Pool score: searching user pool - protocol={:?}, chain={:?}, tokens=({}, {})",
-            req.protocol, req.chain, t0_sym, t1_sym
+            req.protocol,
+            req.chain,
+            t0_sym,
+            t1_sym
         );
 
         // Log available pools for this protocol+chain
         for p in comparable.iter().filter(|p| {
             req.protocol.as_ref().map_or(false, |rp| p.protocol == *rp)
-            && req.chain.as_ref().map_or(false, |rc| p.chain == *rc)
+                && req.chain.as_ref().map_or(false, |rc| p.chain == *rc)
         }) {
             tracing::info!(
                 "  candidate: {}/{} fee={} apr={:.2}",
-                p.token0, p.token1, p.fee_tier, p.total_apr
+                p.token0,
+                p.token1,
+                p.fee_tier,
+                p.total_apr
             );
         }
 
@@ -79,8 +90,7 @@ pub async fn score_pool(
             let t0_up = t0_sym.to_uppercase();
             let t1_up = t1_sym.to_uppercase();
 
-            let tokens_exact = (pt0 == t0_up || pt1 == t0_up)
-                && (pt0 == t1_up || pt1 == t1_up);
+            let tokens_exact = (pt0 == t0_up || pt1 == t0_up) && (pt0 == t1_up || pt1 == t1_up);
 
             let tokens_by_category = if !tokens_exact {
                 let p_t0_asset = Asset::from_symbol(&p.token0, "score");
@@ -88,8 +98,10 @@ pub async fn score_pool(
                 let p_t0_cats = p_t0_asset.category();
                 let p_t1_cats = p_t1_asset.category();
                 // Check both orderings: user(t0,t1) vs pool(pt0,pt1) or pool(pt1,pt0)
-                (p_t0_cats.iter().any(|c| t0_cats.contains(c)) && p_t1_cats.iter().any(|c| t1_cats.contains(c)))
-                || (p_t0_cats.iter().any(|c| t1_cats.contains(c)) && p_t1_cats.iter().any(|c| t0_cats.contains(c)))
+                (p_t0_cats.iter().any(|c| t0_cats.contains(c))
+                    && p_t1_cats.iter().any(|c| t1_cats.contains(c)))
+                    || (p_t0_cats.iter().any(|c| t1_cats.contains(c))
+                        && p_t1_cats.iter().any(|c| t0_cats.contains(c)))
             } else {
                 false
             };
@@ -103,7 +115,10 @@ pub async fn score_pool(
     if user_pool_index.is_none() && (req.protocol.is_some() || req.chain.is_some()) {
         tracing::warn!(
             "Pool score: user pool not found for protocol={:?}, chain={:?}, tokens=({}, {})",
-            req.protocol, req.chain, token0_asset.symbol(), token1_asset.symbol()
+            req.protocol,
+            req.chain,
+            token0_asset.symbol(),
+            token1_asset.symbol()
         );
     }
 
@@ -119,9 +134,7 @@ pub async fn score_pool(
         .iter()
         .enumerate()
         .filter(|(idx, p)| {
-            Some(*idx) != user_pool_index
-            && p.fee_apr_7d > user_apr
-            && p.volume_24h_usd > 0.0
+            Some(*idx) != user_pool_index && p.fee_apr_7d > user_apr && p.volume_24h_usd > 0.0
         })
         .take(3)
         .map(|(i, p)| pool_to_suggestion(p, i + 1))
@@ -168,7 +181,10 @@ pub async fn score_lending(
     req: &LendingScoreRequest,
 ) -> Result<LendingScoreResponse> {
     let mut asset_categories_map: HashMap<String, String> = HashMap::new();
-    let all_tokens: Vec<&str> = req.supplies.iter().map(|a| a.token.as_str())
+    let all_tokens: Vec<&str> = req
+        .supplies
+        .iter()
+        .map(|a| a.token.as_str())
         .chain(req.borrows.iter().map(|a| a.token.as_str()))
         .collect();
     for sym in &all_tokens {
@@ -176,11 +192,15 @@ pub async fn score_lending(
         asset_categories_map.insert(sym.to_uppercase(), asset.canonical_name());
     }
 
-    let supply_categories: Vec<AssetCategory> = req.supplies.iter()
+    let supply_categories: Vec<AssetCategory> = req
+        .supplies
+        .iter()
         .flat_map(|a| Asset::from_symbol(&a.token, "score").category())
         .collect();
 
-    let borrow_categories: Vec<AssetCategory> = req.borrows.iter()
+    let borrow_categories: Vec<AssetCategory> = req
+        .borrows
+        .iter()
         .flat_map(|a| Asset::from_symbol(&a.token, "score").category())
         .collect();
 
@@ -191,10 +211,22 @@ pub async fn score_lending(
         protocols: None,
         operation_types: Some("lending".to_string()),
         asset_categories: if !supply_categories.is_empty() {
-            Some(supply_categories.iter()
-                .map(|c| serde_json::to_value(c).unwrap_or_default().as_str().unwrap_or("").to_string())
-                .collect::<Vec<_>>().join(","))
-        } else { None },
+            Some(
+                supply_categories
+                    .iter()
+                    .map(|c| {
+                        serde_json::to_value(c)
+                            .unwrap_or_default()
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(","),
+            )
+        } else {
+            None
+        },
         token: None,
         min_liquidity: req.min_liquidity,
         page: 1,
@@ -208,10 +240,22 @@ pub async fn score_lending(
         protocols: None,
         operation_types: Some("lending".to_string()),
         asset_categories: if !borrow_categories.is_empty() {
-            Some(borrow_categories.iter()
-                .map(|c| serde_json::to_value(c).unwrap_or_default().as_str().unwrap_or("").to_string())
-                .collect::<Vec<_>>().join(","))
-        } else { None },
+            Some(
+                borrow_categories
+                    .iter()
+                    .map(|c| {
+                        serde_json::to_value(c)
+                            .unwrap_or_default()
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(","),
+            )
+        } else {
+            None
+        },
         token: None,
         min_liquidity: req.min_liquidity,
         page: 1,
@@ -225,14 +269,22 @@ pub async fn score_lending(
     let supply_rates = supply_rates?;
     let borrow_rates = borrow_rates?;
 
-    let has_values = req.supplies.iter().any(|a| a.value > 0.0)
-        || req.borrows.iter().any(|a| a.value > 0.0);
+    let has_values =
+        req.supplies.iter().any(|a| a.value > 0.0) || req.borrows.iter().any(|a| a.value > 0.0);
 
     let mut groups: HashMap<(String, String), Vec<&RateResult>> = HashMap::new();
     for rate in supply_rates.iter().chain(borrow_rates.iter()) {
         let key = (
-            serde_json::to_value(&rate.protocol).unwrap_or_default().as_str().unwrap_or("").to_string(),
-            serde_json::to_value(&rate.chain).unwrap_or_default().as_str().unwrap_or("").to_string(),
+            serde_json::to_value(&rate.protocol)
+                .unwrap_or_default()
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+            serde_json::to_value(&rate.chain)
+                .unwrap_or_default()
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
         );
         groups.entry(key).or_default().push(rate);
     }
@@ -242,8 +294,16 @@ pub async fn score_lending(
 
     let is_user_group = |proto_str: &str, chain_str: &str| -> bool {
         if let (Some(ref up), Some(ref uc)) = (&req.protocol, &req.chain) {
-            let up_str = serde_json::to_value(up).unwrap_or_default().as_str().unwrap_or("").to_string();
-            let uc_str = serde_json::to_value(uc).unwrap_or_default().as_str().unwrap_or("").to_string();
+            let up_str = serde_json::to_value(up)
+                .unwrap_or_default()
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let uc_str = serde_json::to_value(uc)
+                .unwrap_or_default()
+                .as_str()
+                .unwrap_or("")
+                .to_string();
             proto_str == up_str && chain_str == uc_str
         } else {
             false
@@ -271,28 +331,50 @@ pub async fn score_lending(
             let supply_symbol = supply_asset.symbol();
 
             let best = if is_user {
-                let exact = rates.iter()
+                let exact = rates
+                    .iter()
                     .filter(|r| r.action == Action::Supply)
                     .filter(|r| r.asset.symbol().to_uppercase() == supply_symbol.to_uppercase())
-                    .max_by(|a, b| a.net_apy.partial_cmp(&b.net_apy).unwrap_or(std::cmp::Ordering::Equal));
+                    .max_by(|a, b| {
+                        a.net_apy
+                            .partial_cmp(&b.net_apy)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
                 exact.or_else(|| {
-                    rates.iter()
+                    rates
+                        .iter()
                         .filter(|r| r.action == Action::Supply)
                         .filter(|r| r.asset.category().iter().any(|c| supply_cats.contains(c)))
-                        .max_by(|a, b| a.net_apy.partial_cmp(&b.net_apy).unwrap_or(std::cmp::Ordering::Equal))
+                        .max_by(|a, b| {
+                            a.net_apy
+                                .partial_cmp(&b.net_apy)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })
                 })
             } else {
-                rates.iter()
+                rates
+                    .iter()
                     .filter(|r| r.action == Action::Supply)
                     .filter(|r| r.asset.category().iter().any(|c| supply_cats.contains(c)))
                     .filter(|r| is_healthy_rate(r))
-                    .max_by(|a, b| a.net_apy.partial_cmp(&b.net_apy).unwrap_or(std::cmp::Ordering::Equal))
+                    .max_by(|a, b| {
+                        a.net_apy
+                            .partial_cmp(&b.net_apy)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
             };
 
-            let cat_name = asset_categories_map.get(&sa.token.to_uppercase()).cloned().unwrap_or_else(|| "OTHER".to_string());
+            let cat_name = asset_categories_map
+                .get(&sa.token.to_uppercase())
+                .cloned()
+                .unwrap_or_else(|| "OTHER".to_string());
             if let Some(rate) = best {
                 matched_supply.push(LendingAssetRate {
-                    asset: if is_user { sa.token.to_uppercase() } else { rate.asset.symbol() },
+                    asset: if is_user {
+                        sa.token.to_uppercase()
+                    } else {
+                        rate.asset.symbol()
+                    },
                     asset_category: cat_name,
                     action: Action::Supply,
                     apy: rate.apy,
@@ -325,28 +407,50 @@ pub async fn score_lending(
             let borrow_symbol = borrow_asset.symbol();
 
             let best = if is_user {
-                let exact = rates.iter()
+                let exact = rates
+                    .iter()
                     .filter(|r| r.action == Action::Borrow)
                     .filter(|r| r.asset.symbol().to_uppercase() == borrow_symbol.to_uppercase())
-                    .min_by(|a, b| a.net_apy.partial_cmp(&b.net_apy).unwrap_or(std::cmp::Ordering::Equal));
+                    .min_by(|a, b| {
+                        a.net_apy
+                            .partial_cmp(&b.net_apy)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
                 exact.or_else(|| {
-                    rates.iter()
+                    rates
+                        .iter()
                         .filter(|r| r.action == Action::Borrow)
                         .filter(|r| r.asset.category().iter().any(|c| borrow_cats.contains(c)))
-                        .min_by(|a, b| a.net_apy.partial_cmp(&b.net_apy).unwrap_or(std::cmp::Ordering::Equal))
+                        .min_by(|a, b| {
+                            a.net_apy
+                                .partial_cmp(&b.net_apy)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })
                 })
             } else {
-                rates.iter()
+                rates
+                    .iter()
                     .filter(|r| r.action == Action::Borrow)
                     .filter(|r| r.asset.category().iter().any(|c| borrow_cats.contains(c)))
                     .filter(|r| is_healthy_rate(r))
-                    .min_by(|a, b| a.net_apy.partial_cmp(&b.net_apy).unwrap_or(std::cmp::Ordering::Equal))
+                    .min_by(|a, b| {
+                        a.net_apy
+                            .partial_cmp(&b.net_apy)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
             };
 
-            let cat_name = asset_categories_map.get(&ba.token.to_uppercase()).cloned().unwrap_or_else(|| "OTHER".to_string());
+            let cat_name = asset_categories_map
+                .get(&ba.token.to_uppercase())
+                .cloned()
+                .unwrap_or_else(|| "OTHER".to_string());
             if let Some(rate) = best {
                 matched_borrow.push(LendingAssetRate {
-                    asset: if is_user { ba.token.to_uppercase() } else { rate.asset.symbol() },
+                    asset: if is_user {
+                        ba.token.to_uppercase()
+                    } else {
+                        rate.asset.symbol()
+                    },
                     asset_category: cat_name,
                     action: Action::Borrow,
                     apy: rate.apy,
@@ -374,7 +478,9 @@ pub async fn score_lending(
         }
 
         let assets_matched = matched_supply.len() + matched_borrow.len();
-        if assets_matched == 0 { continue; }
+        if assets_matched == 0 {
+            continue;
+        }
 
         let combined = compute_combined_net_apy(&matched_supply, &matched_borrow, has_values);
 
@@ -408,8 +514,16 @@ pub async fn score_lending(
 
     let (user_proto_str, user_chain_str) = if req.protocol.is_some() && req.chain.is_some() {
         (
-            serde_json::to_value(req.protocol.as_ref().unwrap()).unwrap_or_default().as_str().unwrap_or("").to_string(),
-            serde_json::to_value(req.chain.as_ref().unwrap()).unwrap_or_default().as_str().unwrap_or("").to_string(),
+            serde_json::to_value(req.protocol.as_ref().unwrap())
+                .unwrap_or_default()
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+            serde_json::to_value(req.chain.as_ref().unwrap())
+                .unwrap_or_default()
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
         )
     } else {
         (String::new(), String::new())
@@ -420,19 +534,28 @@ pub async fn score_lending(
     let user_matched_categories: Vec<String> = user_idx
         .map(|idx| {
             // Only include categories that have actual rates (exclude zero-rate placeholders)
-            suggestions[idx].supply_rates.iter()
+            suggestions[idx]
+                .supply_rates
+                .iter()
                 .filter(|r| r.liquidity > 0 || r.net_apy != 0.0)
                 .map(|r| r.asset_category.clone())
-                .chain(suggestions[idx].borrow_rates.iter()
-                    .filter(|r| r.liquidity > 0 || r.net_apy != 0.0)
-                    .map(|r| r.asset_category.clone()))
+                .chain(
+                    suggestions[idx]
+                        .borrow_rates
+                        .iter()
+                        .filter(|r| r.liquidity > 0 || r.net_apy != 0.0)
+                        .map(|r| r.asset_category.clone()),
+                )
                 .collect()
         })
         .unwrap_or_default();
 
     if !user_matched_categories.is_empty() {
         suggestions.retain(|s| {
-            let s_cats: Vec<String> = s.supply_rates.iter().map(|r| r.asset_category.clone())
+            let s_cats: Vec<String> = s
+                .supply_rates
+                .iter()
+                .map(|r| r.asset_category.clone())
                 .chain(s.borrow_rates.iter().map(|r| r.asset_category.clone()))
                 .collect();
             user_matched_categories.iter().all(|c| s_cats.contains(c))
@@ -440,18 +563,26 @@ pub async fn score_lending(
     }
 
     suggestions.sort_by(|a, b| {
-        b.assets_matched.cmp(&a.assets_matched)
-            .then_with(|| b.combined_net_apy.partial_cmp(&a.combined_net_apy).unwrap_or(std::cmp::Ordering::Equal))
+        b.assets_matched.cmp(&a.assets_matched).then_with(|| {
+            b.combined_net_apy
+                .partial_cmp(&a.combined_net_apy)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
 
-    for (i, s) in suggestions.iter_mut().enumerate() { s.rank = i + 1; }
+    for (i, s) in suggestions.iter_mut().enumerate() {
+        s.rank = i + 1;
+    }
 
     let user_idx = find_user_idx(&suggestions, &user_proto_str, &user_chain_str);
     let your_position = user_idx.map(|idx| suggestions[idx].clone());
     let score = your_position.as_ref().map(|p| p.rank);
 
     let total_comparable = suggestions.len();
-    let user_combined = your_position.as_ref().map(|p| p.combined_net_apy).unwrap_or(f64::NEG_INFINITY);
+    let user_combined = your_position
+        .as_ref()
+        .map(|p| p.combined_net_apy)
+        .unwrap_or(f64::NEG_INFINITY);
 
     let top3: Vec<LendingScoreSuggestion> = suggestions
         .into_iter()
@@ -522,11 +653,25 @@ fn is_healthy_rate(rate: &RateResult) -> bool {
     true
 }
 
-fn find_user_idx(suggestions: &[LendingScoreSuggestion], proto: &str, chain: &str) -> Option<usize> {
-    if proto.is_empty() { return None; }
+fn find_user_idx(
+    suggestions: &[LendingScoreSuggestion],
+    proto: &str,
+    chain: &str,
+) -> Option<usize> {
+    if proto.is_empty() {
+        return None;
+    }
     suggestions.iter().position(|s| {
-        let sp = serde_json::to_value(&s.protocol).unwrap_or_default().as_str().unwrap_or("").to_string();
-        let sc = serde_json::to_value(&s.chain).unwrap_or_default().as_str().unwrap_or("").to_string();
+        let sp = serde_json::to_value(&s.protocol)
+            .unwrap_or_default()
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let sc = serde_json::to_value(&s.chain)
+            .unwrap_or_default()
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         sp == proto && sc == chain
     })
 }
@@ -651,9 +796,7 @@ mod tests {
             make_lending_rate(Action::Supply, 10.0, 1000.0),
             make_lending_rate(Action::Supply, 2.0, 9000.0),
         ];
-        let borrow = vec![
-            make_lending_rate(Action::Borrow, 5.0, 5000.0),
-        ];
+        let borrow = vec![make_lending_rate(Action::Borrow, 5.0, 5000.0)];
         // has_values = true
         // supply_weighted = 10*1000 + 2*9000 = 28000
         // borrow_weighted = 5*5000 = 25000

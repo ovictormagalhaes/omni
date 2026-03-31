@@ -5,8 +5,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Silo Finance V2 - Native API Integration
@@ -157,29 +157,43 @@ impl SiloIndexer {
 
         // Build borrow lookup by marketId
         let borrow_map: HashMap<String, BorrowData> = match borrow_result {
-            Ok(pools) => {
-                pools.into_iter()
-                    .filter_map(|p| {
-                        let market_id = p.market_id?;
-                        let borrow = p.borrow_silo?;
-                        let supply = p.supply_silo.as_ref();
+            Ok(pools) => pools
+                .into_iter()
+                .filter_map(|p| {
+                    let market_id = p.market_id?;
+                    let borrow = p.borrow_silo?;
+                    let supply = p.supply_silo.as_ref();
 
-                        Some((market_id, BorrowData {
+                    Some((
+                        market_id,
+                        BorrowData {
                             borrow_apr: wad_to_percent(borrow.borrow_apr.as_deref().unwrap_or("0")),
-                            available_liquidity: raw_usd_to_f64(borrow.liquidity_usd.as_deref().unwrap_or("0")),
-                            max_ltv: wad_to_decimal(supply.and_then(|s| s.max_ltv.as_deref()).unwrap_or("0")),
-                        }))
-                    })
-                    .collect()
-            }
+                            available_liquidity: raw_usd_to_f64(
+                                borrow.liquidity_usd.as_deref().unwrap_or("0"),
+                            ),
+                            max_ltv: wad_to_decimal(
+                                supply.and_then(|s| s.max_ltv.as_deref()).unwrap_or("0"),
+                            ),
+                        },
+                    ))
+                })
+                .collect(),
             Err(e) => {
-                tracing::warn!("[Silo] Failed to fetch borrow data for {:?}: {}, continuing with supply-only", chain, e);
+                tracing::warn!(
+                    "[Silo] Failed to fetch borrow data for {:?}: {}, continuing with supply-only",
+                    chain,
+                    e
+                );
                 HashMap::new()
             }
         };
 
-        tracing::debug!("[Silo] Found {} earn pools, {} borrow entries on {:?}",
-            earn_pools.len(), borrow_map.len(), chain);
+        tracing::debug!(
+            "[Silo] Found {} earn pools, {} borrow entries on {:?}",
+            earn_pools.len(),
+            borrow_map.len(),
+            chain
+        );
 
         let mut rates = Vec::new();
 
@@ -196,16 +210,23 @@ impl SiloIndexer {
             let total_supply = raw_usd_to_f64(pool.total_supply_usd.as_deref().unwrap_or("0"));
 
             // Sum reward APRs from programs
-            let supply_reward: f64 = pool.programs.as_ref()
+            let supply_reward: f64 = pool
+                .programs
+                .as_ref()
                 .map(|progs| {
-                    progs.iter()
+                    progs
+                        .iter()
                         .filter_map(|p| p.apr.as_deref().map(wad_to_percent))
                         .sum()
                 })
                 .unwrap_or(0.0);
 
             // Use base APR if available, otherwise total supply APR
-            let effective_supply_apy = if supply_base_apy > 0.0 { supply_base_apy } else { supply_apy };
+            let effective_supply_apy = if supply_base_apy > 0.0 {
+                supply_base_apy
+            } else {
+                supply_apy
+            };
 
             // Look up borrow data by marketId
             let market_id = pool.market_id.clone().unwrap_or_default();
@@ -223,8 +244,12 @@ impl SiloIndexer {
             };
 
             // Filters
-            if total_supply < 1000.0 { continue; }
-            if effective_supply_apy > 1000.0 || borrow_apr > 1000.0 { continue; }
+            if total_supply < 1000.0 {
+                continue;
+            }
+            if effective_supply_apy > 1000.0 || borrow_apr > 1000.0 {
+                continue;
+            }
 
             // Supply entry
             rates.push(ProtocolRate {
@@ -244,7 +269,11 @@ impl SiloIndexer {
                 utilization_rate,
                 ltv,
                 operation_type: OperationType::Lending,
-                vault_id: if market_id.is_empty() { None } else { Some(market_id.clone()) },
+                vault_id: if market_id.is_empty() {
+                    None
+                } else {
+                    Some(market_id.clone())
+                },
                 vault_name: None,
                 underlying_asset: None,
                 timestamp: Utc::now(),
@@ -270,7 +299,11 @@ impl SiloIndexer {
                     utilization_rate,
                     ltv,
                     operation_type: OperationType::Lending,
-                    vault_id: if market_id.is_empty() { None } else { Some(market_id.clone()) },
+                    vault_id: if market_id.is_empty() {
+                        None
+                    } else {
+                        Some(market_id.clone())
+                    },
                     vault_name: None,
                     underlying_asset: None,
                     timestamp: Utc::now(),
@@ -283,7 +316,8 @@ impl SiloIndexer {
     }
 
     async fn fetch_earn_data(&self, body: &serde_json::Value) -> Result<Vec<EarnPool>> {
-        let response = self.client
+        let response = self
+            .client
             .post(SILO_EARN_URL)
             .timeout(Duration::from_secs(30))
             .header("Content-Type", "application/json")
@@ -301,7 +335,8 @@ impl SiloIndexer {
     }
 
     async fn fetch_borrow_data(&self, body: &serde_json::Value) -> Result<Vec<BorrowPool>> {
-        let response = self.client
+        let response = self
+            .client
             .post(SILO_BORROW_URL)
             .timeout(Duration::from_secs(30))
             .header("Content-Type", "application/json")
@@ -330,7 +365,12 @@ impl RateIndexer for SiloIndexer {
     }
 
     fn supported_chains(&self) -> Vec<Chain> {
-        vec![Chain::Ethereum, Chain::Arbitrum, Chain::Base, Chain::Optimism]
+        vec![
+            Chain::Ethereum,
+            Chain::Arbitrum,
+            Chain::Base,
+            Chain::Optimism,
+        ]
     }
 
     async fn fetch_rates(&self, chain: &Chain) -> Result<Vec<ProtocolRate>> {

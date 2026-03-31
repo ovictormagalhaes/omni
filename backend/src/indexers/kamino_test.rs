@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::kamino::*;
-    use crate::models::{Asset, KnownAsset, Chain, Protocol, Action, OperationType};
+    use crate::models::{Action, Asset, Chain, KnownAsset, OperationType, Protocol};
 
     // ─── URL construction tests ───────────────────────────────────────
 
@@ -13,7 +13,10 @@ mod tests {
         let indexer = KaminoIndexer::new(base.to_string());
 
         // Verify internal api_url does not duplicate paths
-        assert_eq!(indexer.api_url, base, "api_url should be the exact base URL");
+        assert_eq!(
+            indexer.api_url, base,
+            "api_url should be the exact base URL"
+        );
         assert!(
             !indexer.api_url.ends_with('/'),
             "api_url should not have trailing slash, got: {}",
@@ -78,8 +81,8 @@ mod tests {
         let reserves = vec![ReserveMetrics {
             reserve: "reserve_pubkey_1".to_string(),
             liquidity_token: "USDC".to_string(),
-            supply_apy: 0.05,   // 5%
-            borrow_apy: 0.08,   // 8%
+            supply_apy: 0.05, // 5%
+            borrow_apy: 0.08, // 8%
             total_supply: 1_000_000.0,
             total_borrow: 600_000.0,
             max_ltv: 0.75,
@@ -87,16 +90,31 @@ mod tests {
 
         let rates = indexer.parse_reserves(reserves);
 
-        assert_eq!(rates.len(), 2, "Each reserve should produce Supply + Borrow");
+        assert_eq!(
+            rates.len(),
+            2,
+            "Each reserve should produce Supply + Borrow"
+        );
 
         // Supply rate
         let supply = rates.iter().find(|r| r.action == Action::Supply).unwrap();
         assert_eq!(supply.protocol, Protocol::Kamino);
         assert_eq!(supply.chain, Chain::Solana);
         assert_eq!(supply.asset, Asset::Known(KnownAsset::USDC));
-        assert!((supply.supply_apy - 5.0).abs() < 0.01, "Supply APY should be 5%, got {}", supply.supply_apy);
-        assert!((supply.borrow_apr - 8.0).abs() < 0.01, "Borrow APR should be 8%, got {}", supply.borrow_apr);
-        assert!(supply.collateral_enabled, "Supply should have collateral enabled");
+        assert!(
+            (supply.supply_apy - 5.0).abs() < 0.01,
+            "Supply APY should be 5%, got {}",
+            supply.supply_apy
+        );
+        assert!(
+            (supply.borrow_apr - 8.0).abs() < 0.01,
+            "Borrow APR should be 8%, got {}",
+            supply.borrow_apr
+        );
+        assert!(
+            supply.collateral_enabled,
+            "Supply should have collateral enabled"
+        );
         assert!((supply.collateral_ltv - 75.0).abs() < 0.01);
         assert_eq!(supply.operation_type, OperationType::Lending);
         assert_eq!(supply.available_liquidity, 400_000); // supply - borrow
@@ -106,7 +124,10 @@ mod tests {
 
         // Borrow rate
         let borrow = rates.iter().find(|r| r.action == Action::Borrow).unwrap();
-        assert!(!borrow.collateral_enabled, "Borrow should NOT have collateral enabled");
+        assert!(
+            !borrow.collateral_enabled,
+            "Borrow should NOT have collateral enabled"
+        );
         assert_eq!(borrow.operation_type, OperationType::Lending);
     }
 
@@ -140,8 +161,8 @@ mod tests {
             strategy_name: "USDC-SOL Vault".to_string(),
             pub_key: "vault_pubkey_1".to_string(),
             token_a_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string(), // USDC
-            token_b_mint: "So11111111111111111111111111111111111111112".to_string(),     // SOL
-            apy: Some(0.12), // 12%
+            token_b_mint: "So11111111111111111111111111111111111111112".to_string(),  // SOL
+            apy: Some(0.12),                                                          // 12%
             tvl_usd: Some(5_000_000.0),
         }];
 
@@ -153,11 +174,18 @@ mod tests {
         assert_eq!(vault.chain, Chain::Solana);
         assert_eq!(vault.asset, Asset::Known(KnownAsset::USDC));
         assert_eq!(vault.action, Action::Supply);
-        assert!((vault.supply_apy - 12.0).abs() < 0.01, "Vault APY should be 12%, got {}", vault.supply_apy);
+        assert!(
+            (vault.supply_apy - 12.0).abs() < 0.01,
+            "Vault APY should be 12%, got {}",
+            vault.supply_apy
+        );
         assert_eq!(vault.operation_type, OperationType::Vault);
         assert_eq!(vault.vault_id, Some("vault_pubkey_1".to_string()));
         assert_eq!(vault.vault_name, Some("USDC-SOL Vault".to_string()));
-        assert!(!vault.collateral_enabled, "Vault should NOT have collateral enabled");
+        assert!(
+            !vault.collateral_enabled,
+            "Vault should NOT have collateral enabled"
+        );
     }
 
     #[test]
@@ -174,7 +202,10 @@ mod tests {
         }];
 
         let rates = indexer.parse_strategies(strategies);
-        assert!(rates.is_empty(), "Strategies with None APY should be skipped");
+        assert!(
+            rates.is_empty(),
+            "Strategies with None APY should be skipped"
+        );
     }
 
     #[test]
@@ -202,7 +233,11 @@ mod tests {
         let indexer = KaminoIndexer::new("https://api.kamino.finance".to_string());
 
         let result = indexer.fetch_rates().await;
-        assert!(result.is_ok(), "Kamino API should return Ok, got: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Kamino API should return Ok, got: {:?}",
+            result.err()
+        );
 
         let rates = result.unwrap();
         assert!(!rates.is_empty(), "Kamino should return at least 1 rate");
@@ -211,8 +246,16 @@ mod tests {
         for rate in &rates {
             assert_eq!(rate.protocol, Protocol::Kamino);
             assert_eq!(rate.chain, Chain::Solana);
-            assert!(rate.supply_apy >= 0.0, "APY must be non-negative: {}", rate.supply_apy);
-            assert!(rate.borrow_apr >= 0.0, "APR must be non-negative: {}", rate.borrow_apr);
+            assert!(
+                rate.supply_apy >= 0.0,
+                "APY must be non-negative: {}",
+                rate.supply_apy
+            );
+            assert!(
+                rate.borrow_apr >= 0.0,
+                "APR must be non-negative: {}",
+                rate.borrow_apr
+            );
         }
 
         // Must contain at least one known Solana asset (USDC, USDT, or SOL)
@@ -227,24 +270,39 @@ mod tests {
         assert!(has_known_asset, "Must have at least one of USDC/USDT/SOL");
 
         // Must contain Lending rates from reserves
-        let has_lending = rates.iter().any(|r| r.operation_type == OperationType::Lending);
+        let has_lending = rates
+            .iter()
+            .any(|r| r.operation_type == OperationType::Lending);
         assert!(has_lending, "Should have Lending rates from reserves");
 
         // Vault rates from strategies are optional (API may not return APY data)
-        let vault_count = rates.iter().filter(|r| r.operation_type == OperationType::Vault).count();
-        println!("Vault rates: {} (strategies endpoint may have changed)", vault_count);
+        let vault_count = rates
+            .iter()
+            .filter(|r| r.operation_type == OperationType::Vault)
+            .count();
+        println!(
+            "Vault rates: {} (strategies endpoint may have changed)",
+            vault_count
+        );
 
         // Lending rates should have both Supply and Borrow
-        let lending_rates: Vec<_> = rates.iter().filter(|r| r.operation_type == OperationType::Lending).collect();
+        let lending_rates: Vec<_> = rates
+            .iter()
+            .filter(|r| r.operation_type == OperationType::Lending)
+            .collect();
         let has_supply = lending_rates.iter().any(|r| r.action == Action::Supply);
         let has_borrow = lending_rates.iter().any(|r| r.action == Action::Borrow);
         assert!(has_supply, "Lending should include Supply rates");
         assert!(has_borrow, "Lending should include Borrow rates");
 
-        println!("Kamino returned {} rates ({} lending, {} vault)",
+        println!(
+            "Kamino returned {} rates ({} lending, {} vault)",
             rates.len(),
             lending_rates.len(),
-            rates.iter().filter(|r| r.operation_type == OperationType::Vault).count()
+            rates
+                .iter()
+                .filter(|r| r.operation_type == OperationType::Vault)
+                .count()
         );
     }
 
@@ -272,8 +330,14 @@ mod tests {
         );
 
         // Same set of assets
-        let mut assets1: Vec<String> = rates1.iter().map(|r| format!("{}-{:?}", r.asset, r.action)).collect();
-        let mut assets2: Vec<String> = rates2.iter().map(|r| format!("{}-{:?}", r.asset, r.action)).collect();
+        let mut assets1: Vec<String> = rates1
+            .iter()
+            .map(|r| format!("{}-{:?}", r.asset, r.action))
+            .collect();
+        let mut assets2: Vec<String> = rates2
+            .iter()
+            .map(|r| format!("{}-{:?}", r.asset, r.action))
+            .collect();
         assets1.sort();
         assets2.sort();
         assert_eq!(assets1, assets2, "Asset sets should match across fetches");
@@ -283,6 +347,9 @@ mod tests {
     async fn test_kamino_error_on_bad_url() {
         let indexer = KaminoIndexer::new("https://invalid.example.com".to_string());
         let result = indexer.fetch_rates().await;
-        assert!(result.is_err(), "Bad URL should produce an error, not silently succeed");
+        assert!(
+            result.is_err(),
+            "Bad URL should produce an error, not silently succeed"
+        );
     }
 }

@@ -1,9 +1,9 @@
+use super::RateIndexer;
 use crate::models::{Asset, Chain, Protocol, ProtocolRate};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use super::RateIndexer;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -89,7 +89,7 @@ where
 {
     use serde::de::{Deserialize, Error};
     use serde_json::Value;
-    
+
     let value = Value::deserialize(deserializer)?;
     match value {
         Value::String(s) => s.parse::<f64>().map_err(Error::custom),
@@ -139,7 +139,7 @@ impl FluidIndexer {
 
     pub async fn fetch_lending_rates(&self) -> Result<Vec<crate::models::ProtocolRate>> {
         let url = format!("{}/v2/lending/1/tokens", self.api_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -148,12 +148,15 @@ impl FluidIndexer {
             .context("Failed to fetch Fluid lending tokens")?;
 
         let response_text = response.text().await?;
-        tracing::debug!("Fluid API response (first 500 chars): {}", &response_text[..response_text.len().min(500)]);
-        
+        tracing::debug!(
+            "Fluid API response (first 500 chars): {}",
+            &response_text[..response_text.len().min(500)]
+        );
+
         // API returns {"data": [...], "totalAssetsInUsd": "...", ...}
         let fluid_response: FluidLendingResponse = serde_json::from_str(&response_text)
             .context("Failed to parse Fluid lending response")?;
-        
+
         let tokens = fluid_response.data;
 
         let mut rates = Vec::new();
@@ -161,20 +164,20 @@ impl FluidIndexer {
 
         for token in tokens {
             let asset = Asset::from_symbol(&token.asset.symbol, "Fluid");
-            
+
             // Parse price and calculate USD values
             let price: f64 = token.asset.price.parse().unwrap_or(0.0);
             let decimals = token.asset.decimals;
-            
+
             // Parse total assets (in token units with decimals)
             let total_assets: u128 = token.total_assets.parse().unwrap_or(0);
             let total_supply: u128 = token.total_supply.parse().unwrap_or(0);
-            
+
             // Calculate liquidity in USD
             let divisor = 10_u128.pow(decimals);
             let total_liquidity_usd = ((total_assets as f64 / divisor as f64) * price) as u64;
             let supplied_liquidity_usd = ((total_supply as f64 / divisor as f64) * price) as u64;
-            
+
             // Calculate available liquidity
             let available_liquidity = if let Some(ref liq_data) = token.liquidity_supply_data {
                 let withdrawable: u128 = liq_data.withdrawable.parse().unwrap_or(0);
@@ -182,7 +185,7 @@ impl FluidIndexer {
             } else {
                 total_liquidity_usd.saturating_sub(supplied_liquidity_usd)
             };
-            
+
             // Calculate utilization rate
             let utilization_rate = if total_liquidity_usd > 0 {
                 ((supplied_liquidity_usd as f64 / total_liquidity_usd as f64) * 100.0) as u32
@@ -192,7 +195,7 @@ impl FluidIndexer {
 
             // Supply rate (Fluid returns basis points, divide by 100 to get percentage)
             let supply_apy = token.supply_rate / 100.0;
-            
+
             // Sum all rewards from the rewards array
             let rewards_apy: f64 = token.rewards.iter().map(|r| r.rate).sum::<f64>() / 100.0;
 
@@ -206,7 +209,7 @@ impl FluidIndexer {
                 rewards: rewards_apy,
                 performance_fee: None,
                 active: true,
-                collateral_enabled: true,  // Fluid supports collateral
+                collateral_enabled: true, // Fluid supports collateral
                 collateral_ltv: 0.75,
                 total_liquidity: total_liquidity_usd,
                 available_liquidity,
@@ -225,7 +228,7 @@ impl FluidIndexer {
 
     pub async fn fetch_vault_rates(&self) -> Result<Vec<crate::models::ProtocolRate>> {
         let url = format!("{}/v2/borrowing/1/vaults", self.api_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -244,7 +247,7 @@ impl FluidIndexer {
         for vault in vaults {
             // Process supply token
             let asset = Asset::from_symbol(&vault.supply_token.token0.symbol, "Fluid");
-            
+
             let utilization_rate = (vault.liquidity.utilization * 100.0) as u32;
             let total_supply = vault.liquidity.total_supply_usd as u64;
             let total_borrow = vault.liquidity.total_borrow_usd as u64;
@@ -263,7 +266,7 @@ impl FluidIndexer {
                 rewards: 0.0,
                 performance_fee: None,
                 active: true,
-                collateral_enabled: false,  // Borrow doesn't provide collateral
+                collateral_enabled: false, // Borrow doesn't provide collateral
                 collateral_ltv: 0.0,
                 total_liquidity: total_borrow,
                 available_liquidity,
@@ -310,15 +313,5 @@ impl RateIndexer for FluidIndexer {
 
     fn rate_url(&self, rate: &ProtocolRate) -> String {
         self.get_protocol_url(&rate.chain, &rate.asset)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_asset_normalization() {
-        // Tests moved to models.rs Asset::from_symbol()
     }
 }

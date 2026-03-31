@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // Marinade Finance - Solana Liquid Staking
 // Provides mSOL liquid staking token
@@ -43,11 +43,12 @@ impl MarinadeIndexer {
         }
 
         tracing::info!("Fetching Marinade Finance staking APY from official API");
-        
+
         // Marinade official APY endpoint
         let url = "https://api.marinade.finance/msol/apy/7d";
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(url)
             .header("Accept", "application/json")
             .send()
@@ -60,7 +61,7 @@ impl MarinadeIndexer {
 
         let apy_response: MarinadeApyResponse = response.json().await?;
         let supply_apy = apy_response.value;
-        
+
         let mut rates = Vec::new();
 
         rates.push(ProtocolRate {
@@ -73,9 +74,9 @@ impl MarinadeIndexer {
             rewards: 0.0,
             performance_fee: None,
             active: true,
-            collateral_enabled: false,  // Staking doesn't provide collateral
+            collateral_enabled: false, // Staking doesn't provide collateral
             collateral_ltv: 0.0,
-            available_liquidity: 420_000_000,  // Approximate TVL
+            available_liquidity: 420_000_000, // Approximate TVL
             total_liquidity: 420_000_000,
             utilization_rate: 100.0,
             ltv: 0.0,
@@ -86,7 +87,11 @@ impl MarinadeIndexer {
             timestamp: Utc::now(),
         });
 
-        tracing::info!("Marinade: fetched {} rates with APY {:.2}%", rates.len(), supply_apy);
+        tracing::info!(
+            "Marinade: fetched {} rates with APY {:.2}%",
+            rates.len(),
+            supply_apy
+        );
         Ok(rates)
     }
 
@@ -123,7 +128,7 @@ mod tests {
         let indexer = MarinadeIndexer::new();
         let result = indexer.fetch_rates(&Chain::Solana).await;
         assert!(result.is_ok());
-        
+
         let rates = result.unwrap();
         assert_eq!(rates.len(), 1);
         assert_eq!(rates[0].asset, Asset::from_symbol("MSOL", "Marinade"));

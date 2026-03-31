@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 // ============================================================================
 // Maverick V2 - Official API Integration
@@ -98,7 +98,11 @@ impl MaverickIndexer {
             };
 
             if !response.status().is_success() {
-                tracing::warn!("[Maverick] API returned {} for {:?}", response.status(), chain);
+                tracing::warn!(
+                    "[Maverick] API returned {} for {:?}",
+                    response.status(),
+                    chain
+                );
                 continue;
             }
 
@@ -110,9 +114,14 @@ impl MaverickIndexer {
                 }
             };
 
-            tracing::debug!("[Maverick] Found {} pools on {:?}", pools_resp.pools.len(), chain);
+            tracing::debug!(
+                "[Maverick] Found {} pools on {:?}",
+                pools_resp.pools.len(),
+                chain
+            );
 
-            let rates: Vec<PoolRate> = pools_resp.pools
+            let rates: Vec<PoolRate> = pools_resp
+                .pools
                 .into_iter()
                 .filter(|p| p.tvl.as_ref().and_then(|t| t.amount).unwrap_or(0.0) > 10000.0)
                 .filter_map(|p| self.parse_pool(p, chain))
@@ -121,7 +130,10 @@ impl MaverickIndexer {
             all_rates.extend(rates);
         }
 
-        tracing::info!("[Maverick] Parsed {} pools total after filtering", all_rates.len());
+        tracing::info!(
+            "[Maverick] Parsed {} pools total after filtering",
+            all_rates.len()
+        );
         Ok(all_rates)
     }
 
@@ -161,7 +173,9 @@ impl MaverickIndexer {
         if fee_apr_24h > 10000.0 {
             tracing::warn!(
                 "[Maverick] Rejecting pool {}-{} with extreme APR: {:.2}%",
-                token0_str, token1_str, fee_apr_24h
+                token0_str,
+                token1_str,
+                fee_apr_24h
             );
             return None;
         }
@@ -228,16 +242,26 @@ mod tests {
     async fn test_fetch_pools() {
         let indexer = MaverickIndexer::new();
         let result = indexer.fetch_pools().await;
-        assert!(result.is_ok(), "Failed to fetch Maverick pools: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fetch Maverick pools: {:?}",
+            result.err()
+        );
 
         let pools = result.unwrap();
         println!("Maverick: {} pools from official API", pools.len());
         assert!(!pools.is_empty(), "Maverick should return pools");
 
         for pool in pools.iter().take(5) {
-            println!("  {}/{} on {:?}: TVL ${:.0}, Fee APR {:.2}%, fee={} bps",
-                pool.token0.symbol(), pool.token1.symbol(), pool.chain,
-                pool.tvl_usd, pool.fee_apr_24h, pool.fee_rate_bps);
+            println!(
+                "  {}/{} on {:?}: TVL ${:.0}, Fee APR {:.2}%, fee={} bps",
+                pool.token0.symbol(),
+                pool.token1.symbol(),
+                pool.chain,
+                pool.tvl_usd,
+                pool.fee_apr_24h,
+                pool.fee_rate_bps
+            );
         }
     }
 }

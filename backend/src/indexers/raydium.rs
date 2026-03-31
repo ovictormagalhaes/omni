@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 #[derive(Clone)]
 pub struct RaydiumIndexer {
@@ -75,7 +75,8 @@ impl RaydiumIndexer {
             self.api_url, page
         );
 
-        let response: ApiResponse = self.client
+        let response: ApiResponse = self
+            .client
             .get(&url)
             .timeout(std::time::Duration::from_secs(30))
             .send()
@@ -89,10 +90,7 @@ impl RaydiumIndexer {
     pub async fn fetch_pools(&self) -> Result<Vec<PoolRate>> {
         tracing::info!("[Raydium] Fetching pools (2 pages of 500)");
 
-        let (page1, page2) = tokio::join!(
-            self.fetch_page(1),
-            self.fetch_page(2)
-        );
+        let (page1, page2) = tokio::join!(self.fetch_page(1), self.fetch_page(2));
 
         let mut pools = page1.unwrap_or_else(|e| {
             tracing::warn!("[Raydium] Page 1 failed: {}", e);
@@ -130,7 +128,8 @@ impl RaydiumIndexer {
         };
 
         // fee_rate is a decimal (e.g., 0.0025 = 0.25% = 25 bps)
-        let fee_rate_bps = pool.fee_rate
+        let fee_rate_bps = pool
+            .fee_rate
             .map(|r| (r * 10000.0).round() as u32)
             .unwrap_or(30); // default 0.30%
 
@@ -149,9 +148,7 @@ impl RaydiumIndexer {
         let fee_apr_7d = week.map(|w| w.fee_apr).unwrap_or(0.0);
 
         // Sum reward APRs
-        let rewards_apr = day
-            .map(|d| d.reward_apr.iter().sum::<f64>())
-            .unwrap_or(0.0);
+        let rewards_apr = day.map(|d| d.reward_apr.iter().sum::<f64>()).unwrap_or(0.0);
 
         Some(PoolRate {
             protocol: Protocol::Raydium,
@@ -177,7 +174,10 @@ impl RaydiumIndexer {
     }
 
     pub fn get_pool_url(pool_id: &str) -> String {
-        format!("https://raydium.io/liquidity/increase/?mode=add&pool_id={}", pool_id)
+        format!(
+            "https://raydium.io/liquidity/increase/?mode=add&pool_id={}",
+            pool_id
+        )
     }
 }
 

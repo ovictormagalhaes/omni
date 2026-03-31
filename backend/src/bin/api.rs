@@ -1,9 +1,15 @@
-use axum::{routing::{get, post}, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use std::net::SocketAddr;
 use tower_http::cors::{AllowHeaders, AllowMethods, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use omni_backend::{AppState, Config, HistoricalDataService, PoolHistoricalService, PoolRealtimeService, routes, services};
+use omni_backend::{
+    routes, services, AppState, Config, HistoricalDataService, PoolHistoricalService,
+    PoolRealtimeService,
+};
 
 async fn create_app(config: Config) -> anyhow::Result<Router> {
     let historical_service =
@@ -26,7 +32,8 @@ async fn create_app(config: Config) -> anyhow::Result<Router> {
         pool_realtime_service,
     });
 
-    let origins: Vec<_> = cors_origins.iter()
+    let origins: Vec<_> = cors_origins
+        .iter()
         .filter_map(|o| o.parse::<axum::http::HeaderValue>().ok())
         .collect();
     let cors = CorsLayer::new()

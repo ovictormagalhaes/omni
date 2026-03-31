@@ -63,26 +63,32 @@ impl DefiLlamaCache {
 
     /// Get all DeFiLlama pools. Fetches once, returns cached data on subsequent calls.
     pub async fn get_pools(&self) -> Result<&[DefiLlamaPool]> {
-        let pools = self.data.get_or_try_init(|| async {
-            tracing::info!("[DeFiLlama] Fetching yields (single shared request)...");
-            let response: DefiLlamaYieldsResponse = self.client
-                .get("https://yields.llama.fi/pools")
-                .send()
-                .await?
-                .json()
-                .await?;
-            tracing::info!("[DeFiLlama] Cached {} pools", response.data.len());
-            Ok::<_, anyhow::Error>(response.data)
-        }).await?;
+        let pools = self
+            .data
+            .get_or_try_init(|| async {
+                tracing::info!("[DeFiLlama] Fetching yields (single shared request)...");
+                let response: DefiLlamaYieldsResponse = self
+                    .client
+                    .get("https://yields.llama.fi/pools")
+                    .send()
+                    .await?
+                    .json()
+                    .await?;
+                tracing::info!("[DeFiLlama] Cached {} pools", response.data.len());
+                Ok::<_, anyhow::Error>(response.data)
+            })
+            .await?;
         Ok(pools.as_slice())
     }
 
     /// Filter pools by project name(s). Convenience method.
     pub async fn get_pools_by_project(&self, projects: &[&str]) -> Result<Vec<DefiLlamaPool>> {
         let all = self.get_pools().await?;
-        Ok(all.iter()
+        Ok(all
+            .iter()
             .filter(|p| {
-                p.project.as_deref()
+                p.project
+                    .as_deref()
                     .map(|proj| projects.iter().any(|target| proj == *target))
                     .unwrap_or(false)
             })

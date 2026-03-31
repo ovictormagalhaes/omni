@@ -1,10 +1,10 @@
+use super::RateIndexer;
 use crate::models::{Asset, Chain, Protocol, ProtocolRate};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use super::RateIndexer;
 
 // GraphQL response for vaults query
 #[derive(Debug, Serialize, Deserialize)]
@@ -138,7 +138,7 @@ where
 {
     use serde::de::{Deserialize, Error};
     use serde_json::Value;
-    
+
     let value = Value::deserialize(deserializer)?;
     match value {
         Value::String(s) => Ok(s),
@@ -155,7 +155,7 @@ where
 {
     use serde::de::Deserialize;
     use serde_json::Value;
-    
+
     let value = Value::deserialize(deserializer)?;
     let apy_opt: Option<f64> = match value {
         Value::Null => None,
@@ -166,14 +166,17 @@ where
                 Ok(v) => Some(v),
                 Err(_) => {
                     // If string is too large to parse (e.g., 2.417806...e200), return None
-                    tracing::warn!("Morpho API returned unparseable APY string (too large): {} chars", s.len());
+                    tracing::warn!(
+                        "Morpho API returned unparseable APY string (too large): {} chars",
+                        s.len()
+                    );
                     None
                 }
             }
         }
         _ => None,
     };
-    
+
     // Validate APY is reasonable (< 10,000% = 100.0 in decimal)
     // Morpho API returns decimals (0.05 = 5%), so 100.0 = 10,000%
     // Note: High-risk vaults can have extreme but legitimate APYs (e.g., 298,000%)
@@ -181,12 +184,18 @@ where
     match apy_opt {
         Some(apy) if apy.is_finite() && apy >= -1.0 && apy <= 10000.0 => {
             if apy > 1.0 {
-                tracing::info!("Morpho vault with high APY: {:.2}% (may have security risks)", apy * 100.0);
+                tracing::info!(
+                    "Morpho vault with high APY: {:.2}% (may have security risks)",
+                    apy * 100.0
+                );
             }
             Ok(Some(apy))
         }
         Some(apy) => {
-            tracing::error!("Morpho API returned corrupted APY: {} - skipping vault", apy);
+            tracing::error!(
+                "Morpho API returned corrupted APY: {} - skipping vault",
+                apy
+            );
             Ok(None)
         }
         None => Ok(None),
@@ -225,7 +234,11 @@ impl MorphoIndexer {
             match self.fetch_chain_rates(&chain, chain_id).await {
                 Ok(mut rates) => all_rates.append(&mut rates),
                 Err(e) => {
-                    tracing::warn!("Failed to fetch Morpho rates for chain {:?}: {:?}", chain, e);
+                    tracing::warn!(
+                        "Failed to fetch Morpho rates for chain {:?}: {:?}",
+                        chain,
+                        e
+                    );
                 }
             }
         }
@@ -304,19 +317,23 @@ impl MorphoIndexer {
                     continue;
                 }
             };
-            
+
             let base_apy = vault.state.apy.unwrap_or(0.0);
             let total_assets_usd = vault.state.total_assets_usd.unwrap_or(0.0);
-            
+
             // Skip vaults with zero TVL
             if total_assets_usd < 1.0 {
-                tracing::debug!("Skipping Morpho vault {} - TVL too low: ${}", vault.name, total_assets_usd);
+                tracing::debug!(
+                    "Skipping Morpho vault {} - TVL too low: ${}",
+                    vault.name,
+                    total_assets_usd
+                );
                 continue;
             }
-            
+
             // Map asset symbol to our Asset enum
             let asset = Asset::from_symbol(&vault.asset.symbol, "Morpho");
-            
+
             // Morpho vaults only have supply-side APY (no borrowing from vaults)
             // Morpho API formula: netApy = apy + rewards - (apy * fee)
             // Therefore: rewards = netApy - apy + (apy * fee)
@@ -325,25 +342,26 @@ impl MorphoIndexer {
             let vault_fee = vault.state.fee.unwrap_or(0.0);
             let fee_impact_percent = base_apy_percent * vault_fee;
             let rewards_apy = (net_apy_percent - base_apy_percent + fee_impact_percent).max(0.0);
-            
+
             // Parse total assets
             let total_assets_usd_u64 = total_assets_usd as u64;
             let utilization_rate = 0.0; // allocation is complex, not available
-            
+
             // Consider vault active if TVL > $1000 and APY is reasonable
-            let is_active = total_assets_usd >= 1000.0 && base_apy_percent >= 0.0 && base_apy_percent < 1000.0;
+            let is_active =
+                total_assets_usd >= 1000.0 && base_apy_percent >= 0.0 && base_apy_percent < 1000.0;
 
             rates.push(crate::models::ProtocolRate {
                 protocol: Protocol::Morpho,
                 chain: chain.clone(),
                 asset: asset.clone(),
                 action: crate::models::Action::Supply,
-                supply_apy: base_apy_percent,  // Use base APY (aggregator will add rewards)
-                borrow_apr: 0.0, // Vaults don't have borrowing
+                supply_apy: base_apy_percent, // Use base APY (aggregator will add rewards)
+                borrow_apr: 0.0,              // Vaults don't have borrowing
                 rewards: rewards_apy,
                 performance_fee: Some(vault_fee),
                 active: is_active,
-                collateral_enabled: false,  // Morpho vaults don't support collateral
+                collateral_enabled: false, // Morpho vaults don't support collateral
                 collateral_ltv: 0.0,
                 total_liquidity: total_assets_usd_u64,
                 available_liquidity: total_assets_usd_u64, // Approximation
@@ -438,33 +456,37 @@ mod tests {
 
         let response: VaultsGraphQLResponse = serde_json::from_value(json_response).unwrap();
         assert!(response.data.is_some());
-        
+
         let vaults = response.data.unwrap().vaults.items;
         assert_eq!(vaults.len(), 1);
-        
+
         let vault = &vaults[0];
         assert_eq!(vault.address, "0xb0f05E4De970A1aaf77f8C2F823953a367504BA9");
         assert_eq!(vault.name, "ALPHA USDC Core");
         assert_eq!(vault.asset.symbol, "USDC");
         assert_eq!(vault.chain.id, 1);
-        
+
         // Verify APY values
         assert!(vault.state.net_apy.is_some());
         assert!(vault.state.apy.is_some());
         assert_eq!(vault.state.fee, Some(0.1));
-        
+
         let net_apy = vault.state.net_apy.unwrap();
         let apy = vault.state.apy.unwrap();
-        
+
         // Calculate rewards using the reverse engineering formula
         let net_apy_percent = net_apy * 100.0;
         let base_apy_percent = apy * 100.0;
         let vault_fee = vault.state.fee.unwrap_or(0.0);
         let fee_impact_percent = base_apy_percent * vault_fee;
         let rewards_apy = (net_apy_percent - base_apy_percent + fee_impact_percent).max(0.0);
-        
+
         // Expected: (5.857 - 6.050 + 0.605) = 0.412%
-        assert!((rewards_apy - 0.412).abs() < 0.01, "Rewards APY should be ~0.412%, got {}", rewards_apy);
+        assert!(
+            (rewards_apy - 0.412).abs() < 0.01,
+            "Rewards APY should be ~0.412%, got {}",
+            rewards_apy
+        );
     }
 
     #[test]
@@ -513,9 +535,12 @@ mod tests {
         });
 
         let vault: VaultV2 = serde_json::from_value(json_response).unwrap();
-        
+
         assert_eq!(vault.address, "0x0229dB3921dE71CFa43Cfe9fb6A87b403647A9ae");
         assert_eq!(vault.asset.symbol, "USDC");
+        assert!(vault.avg_apy > 0.0);
+        assert!(vault.avg_net_apy > 0.0);
+        assert!(vault.performance_fee >= 0.0);
         assert_eq!(vault.rewards.len(), 1);
         assert_eq!(vault.rewards[0].asset.symbol, "MORPHO");
         assert!((vault.rewards[0].supply_apr - 0.0054).abs() < 0.0001);
@@ -525,8 +550,8 @@ mod tests {
     fn test_deserialize_apy_safe_valid_values() {
         // Test valid APY values
         let json_normal = json!({"apy": 0.05});
-        let parsed: serde_json::Value = json_normal;
-        
+        let _parsed: serde_json::Value = json_normal;
+
         // Simulate normal APY parsing through VaultState
         let vault_state_json = json!({
             "netApy": 0.05,
@@ -534,7 +559,7 @@ mod tests {
             "totalAssets": "1000000",
             "totalAssetsUsd": 1000000.0
         });
-        
+
         let state: VaultState = serde_json::from_value(vault_state_json).unwrap();
         assert!(state.net_apy.is_some());
         assert!(state.apy.is_some());
@@ -551,9 +576,12 @@ mod tests {
             "totalAssets": "1000000",
             "totalAssetsUsd": 1000000.0
         });
-        
+
         let state: VaultState = serde_json::from_value(vault_state_json).unwrap();
-        assert!(state.net_apy.is_none(), "Extreme APY should be filtered out");
+        assert!(
+            state.net_apy.is_none(),
+            "Extreme APY should be filtered out"
+        );
     }
 
     #[test]
@@ -565,7 +593,7 @@ mod tests {
             "totalAssets": "1000000",
             "totalAssetsUsd": 1000000.0
         });
-        
+
         let state: VaultState = serde_json::from_value(vault_state_json).unwrap();
         assert!(state.net_apy.is_some());
         assert_eq!(state.net_apy.unwrap(), -0.01);
@@ -580,7 +608,7 @@ mod tests {
             "totalAssets": "1000000",
             "totalAssetsUsd": 1000000.0
         });
-        
+
         let state: VaultState = serde_json::from_value(vault_state_json).unwrap();
         assert!(state.net_apy.is_none());
         assert!(state.apy.is_none());
@@ -590,14 +618,14 @@ mod tests {
     fn test_rewards_calculation_formula() {
         // Test the reverse engineering formula for rewards
         // Formula: rewards = netApy - apy + (apy * fee)
-        
+
         struct TestCase {
             net_apy: f64,
             apy: f64,
             fee: f64,
             expected_rewards: f64,
         }
-        
+
         let test_cases = vec![
             // ALPHA USDC Core example
             TestCase {
@@ -621,11 +649,11 @@ mod tests {
                 expected_rewards: 0.0, // max(4.0 - 5.0 + 0, 0) = 0
             },
         ];
-        
+
         for case in test_cases {
             let fee_impact = case.apy * case.fee;
             let calculated_rewards = (case.net_apy - case.apy + fee_impact).max(0.0);
-            
+
             assert!(
                 (calculated_rewards - case.expected_rewards).abs() < 0.01,
                 "Expected rewards {}, got {} for netApy={}, apy={}, fee={}",
@@ -647,10 +675,10 @@ mod tests {
             "totalAssets": "17681995146222",
             "totalAssetsUsd": 17678468.54
         });
-        
+
         let state: VaultState = serde_json::from_value(vault_state_string).unwrap();
         assert_eq!(state.total_assets, "17681995146222");
-        
+
         // Test with numeric totalAssets
         let vault_state_number = json!({
             "netApy": 0.05,
@@ -658,7 +686,7 @@ mod tests {
             "totalAssets": 17681995146222u64,
             "totalAssetsUsd": 17678468.54
         });
-        
+
         let state2: VaultState = serde_json::from_value(vault_state_number).unwrap();
         assert_eq!(state2.total_assets, "17681995146222");
     }
@@ -666,27 +694,24 @@ mod tests {
     #[test]
     fn test_morpho_url_generation() {
         let indexer = MorphoIndexer::new("https://api.morpho.org/graphql".to_string());
-        
+
         // Test Ethereum vault URL
         let url = indexer.get_protocol_url(
             &Chain::Ethereum,
-            Some("0xb0f05E4De970A1aaf77f8C2F823953a367504BA9")
+            Some("0xb0f05E4De970A1aaf77f8C2F823953a367504BA9"),
         );
         assert_eq!(
             url,
             "https://app.morpho.org/ethereum/vault/0xb0f05E4De970A1aaf77f8C2F823953a367504BA9"
         );
-        
+
         // Test Arbitrum vault URL
-        let url_arb = indexer.get_protocol_url(
-            &Chain::Arbitrum,
-            Some("0x1234567890abcdef")
-        );
+        let url_arb = indexer.get_protocol_url(&Chain::Arbitrum, Some("0x1234567890abcdef"));
         assert_eq!(
             url_arb,
             "https://app.morpho.org/arbitrum/vault/0x1234567890abcdef"
         );
-        
+
         // Test without vault ID
         let url_base = indexer.get_protocol_url(&Chain::Base, None);
         assert_eq!(url_base, "https://app.morpho.org/base/earn");
@@ -725,15 +750,19 @@ mod tests {
 
         let response: VaultsGraphQLResponse = serde_json::from_value(json_response).unwrap();
         let vault = &response.data.unwrap().vaults.items[0];
-        
+
         let net_apy = vault.state.net_apy.unwrap() * 100.0;
         let apy = vault.state.apy.unwrap() * 100.0;
         let fee = vault.state.fee.unwrap();
-        
+
         let fee_impact = apy * fee;
         let rewards = (net_apy - apy + fee_impact).max(0.0);
-        
+
         // Expected: 4.12 - 4.86 + 0.729 = -0.011 -> max(0) = 0.0
-        assert!(rewards < 0.1, "Vault without rewards should calculate ~0%, got {}", rewards);
+        assert!(
+            rewards < 0.1,
+            "Vault without rewards should calculate ~0%, got {}",
+            rewards
+        );
     }
 }

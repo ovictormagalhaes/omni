@@ -45,10 +45,12 @@ impl Config {
             backfill_days: std::env::var("BACKFILL_DAYS")
                 .unwrap_or_else(|_| "30".to_string())
                 .parse()?,
-            aave_subgraph_arbitrum: std::env::var("AAVE_SUBGRAPH_ARBITRUM")
-                .unwrap_or_else(|_| "https://api.thegraph.com/subgraphs/name/aave/protocol-v3-arbitrum".to_string()),
-            aave_subgraph_base: std::env::var("AAVE_SUBGRAPH_BASE")
-                .unwrap_or_else(|_| "https://api.thegraph.com/subgraphs/name/aave/protocol-v3-base".to_string()),
+            aave_subgraph_arbitrum: std::env::var("AAVE_SUBGRAPH_ARBITRUM").unwrap_or_else(|_| {
+                "https://api.thegraph.com/subgraphs/name/aave/protocol-v3-arbitrum".to_string()
+            }),
+            aave_subgraph_base: std::env::var("AAVE_SUBGRAPH_BASE").unwrap_or_else(|_| {
+                "https://api.thegraph.com/subgraphs/name/aave/protocol-v3-base".to_string()
+            }),
             kamino_api_url: std::env::var("KAMINO_API_URL")
                 .unwrap_or_else(|_| "https://api.kamino.finance".to_string()),
             morpho_api_url: std::env::var("MORPHO_API_URL")

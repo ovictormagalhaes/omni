@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Aura Finance - Official GraphQL API Integration
@@ -106,7 +106,10 @@ impl AuraIndexer {
             None => return Ok(vec![]),
         };
 
-        tracing::info!("[Aura] Fetching rates for {:?} from official GraphQL API", chain);
+        tracing::info!(
+            "[Aura] Fetching rates for {:?} from official GraphQL API",
+            chain
+        );
 
         let query = json!({
             "query": format!(
@@ -115,21 +118,30 @@ impl AuraIndexer {
             )
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(AURA_GRAPHQL_URL)
             .json(&query)
             .send()
             .await?;
 
         if !response.status().is_success() {
-            tracing::warn!("[Aura] API returned status {} for {:?}", response.status(), chain);
+            tracing::warn!(
+                "[Aura] API returned status {} for {:?}",
+                response.status(),
+                chain
+            );
             return Ok(vec![]);
         }
 
         let gql_response: GraphQLResponse = match response.json().await {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!("[Aura] Failed to parse GraphQL response for {:?}: {}", chain, e);
+                tracing::warn!(
+                    "[Aura] Failed to parse GraphQL response for {:?}: {}",
+                    chain,
+                    e
+                );
                 return Ok(vec![]);
             }
         };
@@ -140,19 +152,21 @@ impl AuraIndexer {
             return Ok(vec![]);
         }
 
-        let pools = gql_response.data
-            .map(|d| d.pools)
-            .unwrap_or_default();
+        let pools = gql_response.data.map(|d| d.pools).unwrap_or_default();
 
         tracing::debug!("[Aura] Found {} pools on {:?}", pools.len(), chain);
 
         let mut rates = Vec::new();
 
         for pool in pools {
-            if pool.is_shutdown.unwrap_or(false) { continue; }
+            if pool.is_shutdown.unwrap_or(false) {
+                continue;
+            }
 
             let tvl = pool.tvl.unwrap_or(0.0);
-            if tvl < 1000.0 { continue; }
+            if tvl < 1000.0 {
+                continue;
+            }
 
             let name = pool.name.as_deref().unwrap_or_default();
             let symbol = extract_primary_symbol(name, &pool.tokens);
@@ -165,8 +179,13 @@ impl AuraIndexer {
             // Separate base (SWAP_FEES) from reward APRs
             let (base_apr, reward_apr) = match aprs.and_then(|a| a.breakdown.as_ref()) {
                 Some(breakdown) => {
-                    let base: f64 = breakdown.iter()
-                        .filter(|b| b.id.as_deref().map(|id| id.contains("SWAP_FEES")).unwrap_or(false))
+                    let base: f64 = breakdown
+                        .iter()
+                        .filter(|b| {
+                            b.id.as_deref()
+                                .map(|id| id.contains("SWAP_FEES"))
+                                .unwrap_or(false)
+                        })
                         .filter_map(|b| b.value)
                         .sum();
                     (base, total_apr - base)
@@ -174,11 +193,14 @@ impl AuraIndexer {
                 None => (0.0, total_apr),
             };
 
-            if total_apr > 1000.0 { continue; }
+            if total_apr > 1000.0 {
+                continue;
+            }
 
-            let pool_id = pool.id.or(pool.address).unwrap_or_else(|| {
-                format!("aura-{}-{}", chain_id, name)
-            });
+            let pool_id = pool
+                .id
+                .or(pool.address)
+                .unwrap_or_else(|| format!("aura-{}-{}", chain_id, name));
 
             rates.push(ProtocolRate {
                 protocol: Protocol::Aura,
@@ -262,16 +284,24 @@ mod tests {
     async fn test_fetch_rates_ethereum() {
         let indexer = AuraIndexer::new();
         let result = indexer.fetch_rates(&Chain::Ethereum).await;
-        assert!(result.is_ok(), "Failed to fetch Aura rates: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to fetch Aura rates: {:?}",
+            result.err()
+        );
 
         let rates = result.unwrap();
-        println!("Aura Ethereum: {} rates from official GraphQL API", rates.len());
+        println!(
+            "Aura Ethereum: {} rates from official GraphQL API",
+            rates.len()
+        );
         assert!(!rates.is_empty(), "Aura should return rates");
 
         for rate in rates.iter().take(5) {
-            println!("  {} {}: Base APY {:.2}%, Rewards {:.2}%, TVL ${}",
-                rate.protocol, rate.asset,
-                rate.supply_apy, rate.rewards, rate.total_liquidity);
+            println!(
+                "  {} {}: Base APY {:.2}%, Rewards {:.2}%, TVL ${}",
+                rate.protocol, rate.asset, rate.supply_apy, rate.rewards, rate.total_liquidity
+            );
         }
     }
 

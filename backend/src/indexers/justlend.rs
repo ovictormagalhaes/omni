@@ -2,8 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 
-use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 use chrono::Utc;
 
 #[derive(Debug, Clone)]
@@ -48,11 +48,12 @@ impl JustLendIndexer {
         }
 
         tracing::info!("Fetching JustLend rates from Tron network");
-        
+
         // JustLend API endpoint
         let url = "https://api.just.network/justlend/markets";
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(url)
             .header("Accept", "application/json")
             .header("User-Agent", "Mozilla/5.0")
@@ -65,13 +66,14 @@ impl JustLendIndexer {
         }
 
         let markets: Vec<JustLendMarket> = response.json().await?;
-        
+
         let mut rates = Vec::new();
 
         for market in markets {
-            let underlying = market.underlying_symbol
+            let underlying = market
+                .underlying_symbol
                 .unwrap_or_else(|| market.symbol.replace("j", ""));
-            
+
             let asset = Self::normalize_asset(&underlying);
             if asset.is_none() {
                 continue;
@@ -81,7 +83,7 @@ impl JustLendIndexer {
             let borrow_apy = market.borrow_apy.unwrap_or(0.0);
             let total_supply = market.total_supply.unwrap_or(0.0);
             let total_borrows = market.total_borrows.unwrap_or(0.0);
-            
+
             let available_liquidity = (total_supply - total_borrows) as u64;
             let total_liquidity = total_supply as u64;
             let utilization_rate = if total_supply > 0.0 {
@@ -195,15 +197,23 @@ mod tests {
     async fn test_fetch_rates_tron() {
         let indexer = JustLendIndexer::new(None);
         let result = indexer.fetch_rates(&Chain::Tron).await;
-        
+
         // May fail due to network issues
         match result {
             Ok(rates) => {
                 println!("JustLend Tron: {} rates", rates.len());
                 for rate in rates.iter().take(3) {
-                    println!("  {} {} {}: APY {:.2}%", 
-                        rate.protocol, rate.chain, rate.asset, 
-                        if rate.action == Action::Supply { rate.supply_apy } else { rate.borrow_apr });
+                    println!(
+                        "  {} {} {}: APY {:.2}%",
+                        rate.protocol,
+                        rate.chain,
+                        rate.asset,
+                        if rate.action == Action::Supply {
+                            rate.supply_apy
+                        } else {
+                            rate.borrow_apr
+                        }
+                    );
                 }
             }
             Err(e) => {

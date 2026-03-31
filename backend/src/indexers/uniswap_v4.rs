@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 /// Uniswap V4 indexer using Uniswap's official GraphQL API (interface.gateway.uniswap.org).
 /// V4 uses a singleton PoolManager contract with hooks support.
@@ -108,7 +108,8 @@ impl UniswapV4Indexer {
 
         tracing::info!("[Uniswap V4] Fetching pools for {:?}", chain);
 
-        let http_response = self.client
+        let http_response = self
+            .client
             .post("https://interface.gateway.uniswap.org/v1/graphql")
             .header("Content-Type", "application/json")
             .header("Origin", "https://app.uniswap.org")
@@ -121,7 +122,9 @@ impl UniswapV4Indexer {
             let body = http_response.text().await.unwrap_or_default();
             tracing::warn!(
                 "[Uniswap V4] HTTP {} for {:?}: {}",
-                status, chain, &body[..body.len().min(200)]
+                status,
+                chain,
+                &body[..body.len().min(200)]
             );
             return Ok(vec![]);
         }
@@ -132,7 +135,9 @@ impl UniswapV4Indexer {
             Err(e) => {
                 tracing::warn!(
                     "[Uniswap V4] Failed to parse response for {:?}: {} — body: {}",
-                    chain, e, &body[..body.len().min(200)]
+                    chain,
+                    e,
+                    &body[..body.len().min(200)]
                 );
                 return Ok(vec![]);
             }
@@ -140,7 +145,11 @@ impl UniswapV4Indexer {
 
         if let Some(errors) = &response.errors {
             for err in errors {
-                tracing::warn!("[Uniswap V4] GraphQL error for {:?}: {}", chain, err.message);
+                tracing::warn!(
+                    "[Uniswap V4] GraphQL error for {:?}: {}",
+                    chain,
+                    err.message
+                );
             }
         }
 
@@ -172,7 +181,11 @@ impl UniswapV4Indexer {
                 }
             }
             if matched > 0 {
-                tracing::info!("[Uniswap V4] Merged Merkl rewards into {} pools for {:?}", matched, chain);
+                tracing::info!(
+                    "[Uniswap V4] Merged Merkl rewards into {} pools for {:?}",
+                    matched,
+                    chain
+                );
             }
         }
 
@@ -280,7 +293,9 @@ impl UniswapV4Indexer {
             if opp.status.as_deref() != Some("LIVE") {
                 continue;
             }
-            let is_uni_v4 = opp.name.as_deref()
+            let is_uni_v4 = opp
+                .name
+                .as_deref()
                 .map(|n| n.contains("UniswapV4") || n.contains("Uniswap V4"))
                 .unwrap_or(false);
             if !is_uni_v4 {
@@ -294,7 +309,11 @@ impl UniswapV4Indexer {
         }
 
         if !rewards_map.is_empty() {
-            tracing::info!("[Merkl/V4] Found {} active reward pools for {:?}", rewards_map.len(), chain);
+            tracing::info!(
+                "[Merkl/V4] Found {} active reward pools for {:?}",
+                rewards_map.len(),
+                chain
+            );
         }
         rewards_map
     }
@@ -341,7 +360,10 @@ impl UniswapV4Indexer {
             Chain::Optimism => "optimism",
             _ => "ethereum",
         };
-        format!("https://app.uniswap.org/explore/pools/{}/{}", chain_slug, pool_id)
+        format!(
+            "https://app.uniswap.org/explore/pools/{}/{}",
+            chain_slug, pool_id
+        )
     }
 }
 

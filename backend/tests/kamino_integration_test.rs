@@ -6,11 +6,12 @@
 ///
 /// Requires: MONGODB_URL env var set to a test database.
 /// Run with: cargo test --test kamino_integration_test -- --nocapture
-
 use anyhow::Result;
-use std::env;
 use chrono::Utc;
-use omni_backend::models::{Protocol, Chain, Action, OperationType, Asset, KnownAsset, RateSnapshot};
+use omni_backend::models::{
+    Action, Asset, Chain, KnownAsset, OperationType, Protocol, RateSnapshot,
+};
+use std::env;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Phase 1: Live API data validation (no DB required)
@@ -18,9 +19,8 @@ use omni_backend::models::{Protocol, Chain, Action, OperationType, Asset, KnownA
 
 #[tokio::test]
 async fn test_kamino_api_returns_valid_lending_rates() -> Result<()> {
-    let indexer = omni_backend::indexers::KaminoIndexer::new(
-        "https://api.kamino.finance".to_string(),
-    );
+    let indexer =
+        omni_backend::indexers::KaminoIndexer::new("https://api.kamino.finance".to_string());
 
     let rates = indexer.fetch_rates().await?;
     assert!(!rates.is_empty(), "Kamino API must return rates");
@@ -30,38 +30,62 @@ async fn test_kamino_api_returns_valid_lending_rates() -> Result<()> {
         .filter(|r| r.operation_type == OperationType::Lending)
         .collect();
 
-    assert!(!lending_rates.is_empty(), "Must have lending rates from reserves");
+    assert!(
+        !lending_rates.is_empty(),
+        "Must have lending rates from reserves"
+    );
 
     for rate in &lending_rates {
         assert_eq!(rate.protocol, Protocol::Kamino);
         assert_eq!(rate.chain, Chain::Solana);
-        assert!(rate.supply_apy >= 0.0 && rate.supply_apy <= 200.0,
-            "Supply APY out of range: {}", rate.supply_apy);
-        assert!(rate.borrow_apr >= 0.0 && rate.borrow_apr <= 200.0,
-            "Borrow APR out of range: {}", rate.borrow_apr);
-        assert!(rate.utilization_rate >= 0.0 && rate.utilization_rate <= 100.0,
-            "Utilization rate out of range: {}", rate.utilization_rate);
+        assert!(
+            rate.supply_apy >= 0.0 && rate.supply_apy <= 200.0,
+            "Supply APY out of range: {}",
+            rate.supply_apy
+        );
+        assert!(
+            rate.borrow_apr >= 0.0 && rate.borrow_apr <= 200.0,
+            "Borrow APR out of range: {}",
+            rate.borrow_apr
+        );
+        assert!(
+            rate.utilization_rate >= 0.0 && rate.utilization_rate <= 100.0,
+            "Utilization rate out of range: {}",
+            rate.utilization_rate
+        );
     }
 
     // Must have USDC lending (Kamino always has USDC)
-    let usdc_lending = lending_rates.iter().find(|r| {
-        r.asset == Asset::Known(KnownAsset::USDC) && r.action == Action::Supply
-    });
-    assert!(usdc_lending.is_some(), "Kamino must have USDC supply lending rate");
+    let usdc_lending = lending_rates
+        .iter()
+        .find(|r| r.asset == Asset::Known(KnownAsset::USDC) && r.action == Action::Supply);
+    assert!(
+        usdc_lending.is_some(),
+        "Kamino must have USDC supply lending rate"
+    );
 
     let usdc = usdc_lending.unwrap();
-    assert!(usdc.total_liquidity > 0, "USDC should have positive total liquidity");
-    assert!(usdc.collateral_enabled, "USDC supply should have collateral enabled");
+    assert!(
+        usdc.total_liquidity > 0,
+        "USDC should have positive total liquidity"
+    );
+    assert!(
+        usdc.collateral_enabled,
+        "USDC supply should have collateral enabled"
+    );
 
-    println!("PASS: {} lending rates, USDC supply APY: {:.2}%", lending_rates.len(), usdc.supply_apy);
+    println!(
+        "PASS: {} lending rates, USDC supply APY: {:.2}%",
+        lending_rates.len(),
+        usdc.supply_apy
+    );
     Ok(())
 }
 
 #[tokio::test]
 async fn test_kamino_api_vault_strategies_structure() -> Result<()> {
-    let indexer = omni_backend::indexers::KaminoIndexer::new(
-        "https://api.kamino.finance".to_string(),
-    );
+    let indexer =
+        omni_backend::indexers::KaminoIndexer::new("https://api.kamino.finance".to_string());
 
     let rates = indexer.fetch_rates().await?;
 
@@ -78,18 +102,38 @@ async fn test_kamino_api_vault_strategies_structure() -> Result<()> {
         for rate in &vault_rates {
             assert_eq!(rate.protocol, Protocol::Kamino);
             assert_eq!(rate.chain, Chain::Solana);
-            assert_eq!(rate.action, Action::Supply, "Vaults should only have Supply action");
-            assert!(!rate.collateral_enabled, "Vaults should NOT have collateral enabled");
-            assert!(rate.vault_id.is_some(), "Vault must have a vault_id (pub_key)");
+            assert_eq!(
+                rate.action,
+                Action::Supply,
+                "Vaults should only have Supply action"
+            );
+            assert!(
+                !rate.collateral_enabled,
+                "Vaults should NOT have collateral enabled"
+            );
+            assert!(
+                rate.vault_id.is_some(),
+                "Vault must have a vault_id (pub_key)"
+            );
             assert!(rate.vault_name.is_some(), "Vault must have a vault_name");
         }
-        println!("PASS: {} vault rates found and validated", vault_rates.len());
+        println!(
+            "PASS: {} vault rates found and validated",
+            vault_rates.len()
+        );
     }
 
     // Core assertion: lending rates must exist regardless of strategies
-    let lending_count = rates.iter().filter(|r| r.operation_type == OperationType::Lending).count();
+    let lending_count = rates
+        .iter()
+        .filter(|r| r.operation_type == OperationType::Lending)
+        .count();
     assert!(lending_count > 0, "Lending rates must always be present");
-    println!("PASS: {} total rates ({} lending)", rates.len(), lending_count);
+    println!(
+        "PASS: {} total rates ({} lending)",
+        rates.len(),
+        lending_count
+    );
     Ok(())
 }
 
@@ -109,13 +153,17 @@ async fn test_kamino_through_aggregator_pipeline() -> Result<()> {
         protocols: Some("kamino".to_string()),
         operation_types: None,
         asset_categories: None,
+        token: None,
         min_liquidity: 0, // Get everything, including small pools
         page: 1,
         page_size: 100,
     };
 
     let rates = aggregator.get_rates(&query).await?;
-    assert!(!rates.is_empty(), "Aggregator must return Kamino rates for Solana");
+    assert!(
+        !rates.is_empty(),
+        "Aggregator must return Kamino rates for Solana"
+    );
 
     // All results should be Kamino + Solana
     for rate in &rates {
@@ -129,7 +177,9 @@ async fn test_kamino_through_aggregator_pipeline() -> Result<()> {
         assert!(
             (rate.net_apy - expected_net).abs() < 0.001,
             "net_apy ({}) should equal apy ({}) + rewards ({})",
-            rate.net_apy, rate.apy, rate.rewards
+            rate.net_apy,
+            rate.apy,
+            rate.rewards
         );
     }
 
@@ -163,18 +213,26 @@ async fn test_kamino_worker_save_and_verify() -> Result<()> {
         protocols: Some("kamino".to_string()),
         operation_types: Some("lending".to_string()),
         asset_categories: None,
+        token: None,
         min_liquidity: 0,
         page: 1,
         page_size: 100,
     };
 
     let rates = aggregator.get_rates(&query).await?;
-    assert!(!rates.is_empty(), "Must fetch at least one Kamino USDC lending rate");
+    assert!(
+        !rates.is_empty(),
+        "Must fetch at least one Kamino USDC lending rate"
+    );
 
-    println!("Step 1: Fetched {} Kamino USDC lending rates from API", rates.len());
+    println!(
+        "Step 1: Fetched {} Kamino USDC lending rates from API",
+        rates.len()
+    );
 
     // Step 2: Save via HistoricalDataService (same path the worker uses)
-    let historical_service = omni_backend::services::HistoricalDataService::new(&mongo_url, &db_name).await?;
+    let historical_service =
+        omni_backend::services::HistoricalDataService::new(&mongo_url, &db_name).await?;
     let now = Utc::now();
     let saved = historical_service.save_snapshots_batch(&rates, now).await?;
 
@@ -193,14 +251,28 @@ async fn test_kamino_worker_save_and_verify() -> Result<()> {
         );
 
         let has_snapshot = historical_service.has_snapshot(&vault_id, now).await?;
-        assert!(has_snapshot, "Snapshot for vault {} must exist after save", vault_id);
+        assert!(
+            has_snapshot,
+            "Snapshot for vault {} must exist after save",
+            vault_id
+        );
 
-        let latest_date = historical_service.get_latest_snapshot_date(&vault_id).await?;
-        assert!(latest_date.is_some(), "Must have a latest snapshot date for vault {}", vault_id);
+        let latest_date = historical_service
+            .get_latest_snapshot_date(&vault_id)
+            .await?;
+        assert!(
+            latest_date.is_some(),
+            "Must have a latest snapshot date for vault {}",
+            vault_id
+        );
 
         println!(
             "  Verified: {} {} {:?} - APY: {:.2}%, saved at {:?}",
-            rate.protocol, rate.asset, rate.action, rate.apy, latest_date.unwrap()
+            rate.protocol,
+            rate.asset,
+            rate.action,
+            rate.apy,
+            latest_date.unwrap()
         );
     }
 
@@ -225,6 +297,7 @@ async fn test_kamino_and_aave_structural_parity() -> Result<()> {
         protocols: Some("kamino".to_string()),
         operation_types: Some("lending".to_string()),
         asset_categories: None,
+        token: None,
         min_liquidity: 0,
         page: 1,
         page_size: 100,
@@ -238,6 +311,7 @@ async fn test_kamino_and_aave_structural_parity() -> Result<()> {
         protocols: Some("aave".to_string()),
         operation_types: Some("lending".to_string()),
         asset_categories: None,
+        token: None,
         min_liquidity: 0,
         page: 1,
         page_size: 100,
@@ -246,7 +320,10 @@ async fn test_kamino_and_aave_structural_parity() -> Result<()> {
     let kamino_rates = aggregator.get_rates(&kamino_query).await?;
     let aave_rates = aggregator.get_rates(&aave_query).await?;
 
-    assert!(!kamino_rates.is_empty(), "Kamino must return USDC supply rates");
+    assert!(
+        !kamino_rates.is_empty(),
+        "Kamino must return USDC supply rates"
+    );
     assert!(!aave_rates.is_empty(), "Aave must return USDC supply rates");
 
     // Both should follow the same data contract
@@ -255,7 +332,10 @@ async fn test_kamino_and_aave_structural_parity() -> Result<()> {
 
     // Structural parity checks
     assert_eq!(kamino_usdc.action, aave_usdc.action, "Action mismatch");
-    assert_eq!(kamino_usdc.operation_type, aave_usdc.operation_type, "OperationType mismatch");
+    assert_eq!(
+        kamino_usdc.operation_type, aave_usdc.operation_type,
+        "OperationType mismatch"
+    );
     assert!(kamino_usdc.apy >= 0.0, "Kamino APY must be non-negative");
     assert!(aave_usdc.apy >= 0.0, "Aave APY must be non-negative");
     assert!(kamino_usdc.liquidity > 0, "Kamino USDC must have liquidity");
@@ -267,20 +347,33 @@ async fn test_kamino_and_aave_structural_parity() -> Result<()> {
 
     // Both should produce valid vault_ids
     let kamino_vid = RateSnapshot::generate_vault_id(
-        &kamino_usdc.protocol, &kamino_usdc.chain, &kamino_usdc.asset.to_string(),
-        &kamino_usdc.url, kamino_usdc.operation_type, Some(&kamino_usdc.action),
+        &kamino_usdc.protocol,
+        &kamino_usdc.chain,
+        &kamino_usdc.asset.to_string(),
+        &kamino_usdc.url,
+        kamino_usdc.operation_type,
+        Some(&kamino_usdc.action),
     );
     let aave_vid = RateSnapshot::generate_vault_id(
-        &aave_usdc.protocol, &aave_usdc.chain, &aave_usdc.asset.to_string(),
-        &aave_usdc.url, aave_usdc.operation_type, Some(&aave_usdc.action),
+        &aave_usdc.protocol,
+        &aave_usdc.chain,
+        &aave_usdc.asset.to_string(),
+        &aave_usdc.url,
+        aave_usdc.operation_type,
+        Some(&aave_usdc.action),
     );
 
     assert_eq!(kamino_vid.len(), 16, "Kamino vault_id should be 16 chars");
     assert_eq!(aave_vid.len(), 16, "Aave vault_id should be 16 chars");
-    assert_ne!(kamino_vid, aave_vid, "Different protocols must produce different vault_ids");
+    assert_ne!(
+        kamino_vid, aave_vid,
+        "Different protocols must produce different vault_ids"
+    );
 
-    println!("PASS: Kamino USDC {:.2}% vs Aave USDC {:.2}% - structural parity confirmed",
-        kamino_usdc.apy, aave_usdc.apy);
+    println!(
+        "PASS: Kamino USDC {:.2}% vs Aave USDC {:.2}% - structural parity confirmed",
+        kamino_usdc.apy, aave_usdc.apy
+    );
     Ok(())
 }
 
@@ -299,9 +392,13 @@ async fn test_kamino_cross_validate_with_raw_api() -> Result<()> {
         .get("https://api.kamino.finance/v2/kamino-market?programId=KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD")
         .send().await?.json().await?;
 
-    let main_market = markets_resp.as_array().unwrap()
+    let main_market = markets_resp
+        .as_array()
+        .unwrap()
         .iter()
-        .find(|m| m["isPrimary"].as_bool() == Some(true) && m["name"].as_str() == Some("Main Market"))
+        .find(|m| {
+            m["isPrimary"].as_bool() == Some(true) && m["name"].as_str() == Some("Main Market")
+        })
         .expect("Must find Main Market");
 
     let market_address = main_market["lendingMarket"].as_str().unwrap();
@@ -311,10 +408,14 @@ async fn test_kamino_cross_validate_with_raw_api() -> Result<()> {
             "https://api.kamino.finance/kamino-market/{}/reserves/metrics?env=mainnet-beta",
             market_address
         ))
-        .send().await?.json().await?;
+        .send()
+        .await?
+        .json()
+        .await?;
 
     // Step 2: Fetch via our indexer
-    let indexer = omni_backend::indexers::KaminoIndexer::new("https://api.kamino.finance".to_string());
+    let indexer =
+        omni_backend::indexers::KaminoIndexer::new("https://api.kamino.finance".to_string());
     let our_rates = indexer.fetch_rates().await?;
 
     // Step 3: Cross-validate key assets
@@ -323,7 +424,8 @@ async fn test_kamino_cross_validate_with_raw_api() -> Result<()> {
     for asset_name in key_assets {
         // Find in raw API
         let raw = reserves_resp.iter().find(|r| {
-            r["liquidityToken"].as_str().map(|t| t.to_uppercase()) == Some(asset_name.to_uppercase())
+            r["liquidityToken"].as_str().map(|t| t.to_uppercase())
+                == Some(asset_name.to_uppercase())
         });
 
         if raw.is_none() {
@@ -332,15 +434,21 @@ async fn test_kamino_cross_validate_with_raw_api() -> Result<()> {
         }
         let raw = raw.unwrap();
 
-        let raw_supply_apy = raw["supplyApy"].as_str()
+        let raw_supply_apy = raw["supplyApy"]
+            .as_str()
             .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(0.0) * 100.0;
-        let raw_borrow_apy = raw["borrowApy"].as_str()
+            .unwrap_or(0.0)
+            * 100.0;
+        let raw_borrow_apy = raw["borrowApy"]
+            .as_str()
             .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(0.0) * 100.0;
-        let raw_ltv = raw["maxLtv"].as_str()
+            .unwrap_or(0.0)
+            * 100.0;
+        let raw_ltv = raw["maxLtv"]
+            .as_str()
             .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(0.0) * 100.0;
+            .unwrap_or(0.0)
+            * 100.0;
 
         // Find in our parsed rates (Supply action for this asset)
         let our_supply = our_rates.iter().find(|r| {
@@ -355,14 +463,20 @@ async fn test_kamino_cross_validate_with_raw_api() -> Result<()> {
             assert!(
                 apy_diff < 0.5,
                 "{} Supply APY mismatch: ours={:.4}% raw={:.4}% (diff={:.4}%)",
-                asset_name, our.supply_apy, raw_supply_apy, apy_diff
+                asset_name,
+                our.supply_apy,
+                raw_supply_apy,
+                apy_diff
             );
 
             let borrow_diff = (our.borrow_apr - raw_borrow_apy).abs();
             assert!(
                 borrow_diff < 0.5,
                 "{} Borrow APY mismatch: ours={:.4}% raw={:.4}% (diff={:.4}%)",
-                asset_name, our.borrow_apr, raw_borrow_apy, borrow_diff
+                asset_name,
+                our.borrow_apr,
+                raw_borrow_apy,
+                borrow_diff
             );
 
             // LTV should match exactly (integer percentage)
@@ -370,7 +484,9 @@ async fn test_kamino_cross_validate_with_raw_api() -> Result<()> {
             assert!(
                 ltv_diff < 1.0,
                 "{} LTV mismatch: ours={:.0}% raw={:.0}%",
-                asset_name, our.collateral_ltv, raw_ltv
+                asset_name,
+                our.collateral_ltv,
+                raw_ltv
             );
 
             println!(

@@ -1,6 +1,6 @@
 use super::*;
-use chrono::{TimeZone, Datelike};
-use crate::models::{Protocol, Chain, Asset, KnownAsset, OperationType, AssetCategory};
+use crate::models::{Asset, AssetCategory, Chain, KnownAsset, OperationType, Protocol};
+use chrono::TimeZone;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test helpers
@@ -49,7 +49,7 @@ async fn test_fetch_aave_historical_without_api_key_returns_error() {
         "https://app.aave.com/reserve-overview/?underlyingAsset=0x833589fCd6eDb6E08f4c7C32D4f71b54bDA02913&marketName=proto_base_v3",
     );
     let start = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
-    let end   = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+    let end = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
 
     let result = fetcher
         .fetch_historical_data(&Protocol::Aave, &Chain::Base, &rate, start, end)
@@ -63,7 +63,8 @@ async fn test_fetch_aave_historical_without_api_key_returns_error() {
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains("THE_GRAPH_API_KEY"),
-        "Error message must mention THE_GRAPH_API_KEY so operators know how to fix it. Got: {}", err
+        "Error message must mention THE_GRAPH_API_KEY so operators know how to fix it. Got: {}",
+        err
     );
 }
 
@@ -73,13 +74,16 @@ async fn test_fetch_aave_ethereum_without_api_key_returns_error() {
     let fetcher = HistoricalFetcher::new(None);
     let rate = make_rate_result(Protocol::Aave, Chain::Ethereum, "https://app.aave.com/test");
     let start = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
-    let end   = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+    let end = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
 
     let result = fetcher
         .fetch_historical_data(&Protocol::Aave, &Chain::Ethereum, &rate, start, end)
         .await;
 
-    assert!(result.is_err(), "Aave Ethereum must also require THE_GRAPH_API_KEY");
+    assert!(
+        result.is_err(),
+        "Aave Ethereum must also require THE_GRAPH_API_KEY"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,13 +101,17 @@ async fn test_fetch_kamino_historical_returns_data_for_usdc() {
     let fetcher = HistoricalFetcher::new(None);
     let rate = make_rate_result(Protocol::Kamino, Chain::Solana, "https://kamino.finance");
     let start = Utc::now() - chrono::Duration::days(30);
-    let end   = Utc::now();
+    let end = Utc::now();
 
     let result = fetcher
         .fetch_historical_data(&Protocol::Kamino, &Chain::Solana, &rate, start, end)
         .await;
 
-    assert!(result.is_ok(), "Kamino historical fetch should not error: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Kamino historical fetch should not error: {:?}",
+        result.err()
+    );
     // DeFi Llama may or may not have data for the pool ID, so we just verify no error
     let points = result.unwrap();
     println!("Kamino USDC historical: {} data points", points.len());
@@ -119,15 +127,23 @@ async fn test_fetch_kamino_historical_returns_data_for_usdc() {
 #[ignore] // Requires network access to DeFi Llama
 async fn test_fetch_fluid_historical_via_defillama_search() {
     let fetcher = HistoricalFetcher::new(None);
-    let rate = make_rate_result(Protocol::Fluid, Chain::Ethereum, "https://fluid.instadapp.io");
+    let rate = make_rate_result(
+        Protocol::Fluid,
+        Chain::Ethereum,
+        "https://fluid.instadapp.io",
+    );
     let start = Utc::now() - chrono::Duration::days(30);
-    let end   = Utc::now();
+    let end = Utc::now();
 
     let result = fetcher
         .fetch_historical_data(&Protocol::Fluid, &Chain::Ethereum, &rate, start, end)
         .await;
 
-    assert!(result.is_ok(), "Fluid DeFi Llama search should not error: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Fluid DeFi Llama search should not error: {:?}",
+        result.err()
+    );
     let points = result.unwrap();
     println!("Fluid historical: {} data points", points.len());
     // May be empty if DeFi Llama doesn't have a matching pool
@@ -142,18 +158,18 @@ async fn test_fetch_fluid_historical_via_defillama_search() {
 async fn test_fetch_defillama_vault_id_protocols_return_empty_without_vault_id() {
     let fetcher = HistoricalFetcher::new(None);
     let start = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
-    let end   = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+    let end = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
 
     // These protocols check rate.vault_id first — with None, they return empty immediately
     for (protocol, chain) in [
-        (Protocol::Jito,       Chain::Solana),
-        (Protocol::Jupiter,    Chain::Solana),
-        (Protocol::Compound,   Chain::Ethereum),
-        (Protocol::Venus,      Chain::BSC),
-        (Protocol::Benqi,      Chain::Avalanche),
-        (Protocol::Pendle,     Chain::Ethereum),
-        (Protocol::Ethena,     Chain::Ethereum),
-        (Protocol::EtherFi,    Chain::Ethereum),
+        (Protocol::Jito, Chain::Solana),
+        (Protocol::Jupiter, Chain::Solana),
+        (Protocol::Compound, Chain::Ethereum),
+        (Protocol::Venus, Chain::BSC),
+        (Protocol::Benqi, Chain::Avalanche),
+        (Protocol::Pendle, Chain::Ethereum),
+        (Protocol::Ethena, Chain::Ethereum),
+        (Protocol::EtherFi, Chain::Ethereum),
     ] {
         let rate = make_rate_result(protocol.clone(), chain.clone(), "https://example.com");
         let result = fetcher
@@ -161,11 +177,13 @@ async fn test_fetch_defillama_vault_id_protocols_return_empty_without_vault_id()
             .await;
         assert!(
             result.is_ok(),
-            "{:?} should not panic/error with no vault_id", protocol
+            "{:?} should not panic/error with no vault_id",
+            protocol
         );
         assert!(
             result.unwrap().is_empty(),
-            "{:?} with no vault_id should return Ok(vec![])", protocol
+            "{:?} with no vault_id should return Ok(vec![])",
+            protocol
         );
     }
 }
@@ -176,12 +194,12 @@ async fn test_fetch_defillama_vault_id_protocols_return_empty_without_vault_id()
 async fn test_fetch_defillama_search_protocols() {
     let fetcher = HistoricalFetcher::new(None);
     let start = Utc::now() - chrono::Duration::days(30);
-    let end   = Utc::now();
+    let end = Utc::now();
 
     for (protocol, chain, project) in [
         (Protocol::RocketPool, Chain::Ethereum, "rocket-pool"),
-        (Protocol::Euler,      Chain::Ethereum, "euler-v2"),
-        (Protocol::JustLend,   Chain::Tron,     "justlend"),
+        (Protocol::Euler, Chain::Ethereum, "euler-v2"),
+        (Protocol::JustLend, Chain::Tron, "justlend"),
     ] {
         let rate = make_rate_result(protocol.clone(), chain.clone(), "https://example.com");
         let result = fetcher
@@ -189,10 +207,18 @@ async fn test_fetch_defillama_search_protocols() {
             .await;
         assert!(
             result.is_ok(),
-            "{:?} ({}) DeFi Llama search should not error: {:?}", protocol, project, result.err()
+            "{:?} ({}) DeFi Llama search should not error: {:?}",
+            protocol,
+            project,
+            result.err()
         );
         let points = result.unwrap();
-        println!("{:?} ({}) historical: {} data points", protocol, project, points.len());
+        println!(
+            "{:?} ({}) historical: {} data points",
+            protocol,
+            project,
+            points.len()
+        );
     }
 }
 
@@ -220,14 +246,14 @@ fn test_historical_fetcher_implementation_coverage() {
 
     // DeFi Llama vault_id-based (pool UUID from indexer → yields.llama.fi/chart)
     let _defillama_vault_id: &[Protocol] = &[
-        Protocol::Compound,  // compound-v3
-        Protocol::Venus,     // venus-*
-        Protocol::Benqi,     // benqi-lending
-        Protocol::Pendle,    // pendle
-        Protocol::Ethena,    // ethena-usde
-        Protocol::EtherFi,   // ether.fi-stake/liquid
-        Protocol::Jupiter,   // jupiter-staked-sol
-        Protocol::Jito,      // jitosol
+        Protocol::Compound, // compound-v3
+        Protocol::Venus,    // venus-*
+        Protocol::Benqi,    // benqi-lending
+        Protocol::Pendle,   // pendle
+        Protocol::Ethena,   // ethena-usde
+        Protocol::EtherFi,  // ether.fi-stake/liquid
+        Protocol::Jupiter,  // jupiter-staked-sol
+        Protocol::Jito,     // jitosol
     ];
 
     // DeFi Llama search-based (search pools endpoint by project + chain + symbol)
@@ -262,53 +288,68 @@ fn test_historical_fetcher_implementation_coverage() {
 #[test]
 fn test_extract_address_from_url_valid() {
     let fetcher = HistoricalFetcher::new(None);
-    
+
     // Test with 40-character Ethereum address (VALID)
     let url1 = "https://app.morpho.org/ethereum/vault/0x38989BBA00BDF8181F4082995b3DEAe96163aC5D6aa91cf1a4cdf5ee3102ad37";
     let result1 = fetcher.extract_address_from_url(url1);
-    assert_eq!(result1, Some("0x38989bba00bdf8181f4082995b3deae96163ac5d".to_string()));
-    
+    assert_eq!(
+        result1,
+        Some("0x38989bba00bdf8181f4082995b3deae96163ac5d".to_string())
+    );
+
     // Test with another valid address
     let url2 = "https://app.morpho.org/vault/0xf24608e0CCb972b0b0f4A6446a0BBf58c701a026";
     let result2 = fetcher.extract_address_from_url(url2);
-    assert_eq!(result2, Some("0xf24608e0ccb972b0b0f4a6446a0bbf58c701a026".to_string()));
-    
+    assert_eq!(
+        result2,
+        Some("0xf24608e0ccb972b0b0f4a6446a0bbf58c701a026".to_string())
+    );
+
     // Test mixed case
     let url3 = "https://example.com/0xAbCdEf1234567890aBcDeF1234567890AbCdEf12";
     let result3 = fetcher.extract_address_from_url(url3);
-    assert_eq!(result3, Some("0xabcdef1234567890abcdef1234567890abcdef12".to_string()));
+    assert_eq!(
+        result3,
+        Some("0xabcdef1234567890abcdef1234567890abcdef12".to_string())
+    );
 }
 
 #[test]
 fn test_extract_address_from_url_should_ignore_64char_hashes() {
     let fetcher = HistoricalFetcher::new(None);
-    
+
     let url_with_hash = "https://app.morpho.org/polygon/vault/0x1590cb22d797e226df92ebc6e0153427e207299916e7e4e53461389ad68272fb";
     let result = fetcher.extract_address_from_url(url_with_hash);
-    
-    assert_eq!(result, None, "Should not extract prefix of 64-character hashes");
+
+    assert_eq!(
+        result, None,
+        "Should not extract prefix of 64-character hashes"
+    );
 }
 
 #[test]
 fn test_extract_address_from_url_multiple_addresses() {
     let fetcher = HistoricalFetcher::new(None);
-    
+
     let url = "https://app.morpho.org/vault/0x38989BBA00BDF8181F4082995b3DEAe96163aC5D/0x1590cb22d797e226df92ebc6e0153427e207299916e7e4e53461389ad68272fb";
     let result = fetcher.extract_address_from_url(url);
-    
-    assert_eq!(result, Some("0x38989bba00bdf8181f4082995b3deae96163ac5d".to_string()));
+
+    assert_eq!(
+        result,
+        Some("0x38989bba00bdf8181f4082995b3deae96163ac5d".to_string())
+    );
 }
 
 #[test]
 fn test_extract_address_from_url_no_address() {
     let fetcher = HistoricalFetcher::new(None);
-    
+
     let result1 = fetcher.extract_address_from_url("https://app.morpho.org/explore");
     assert_eq!(result1, None);
-    
+
     let result2 = fetcher.extract_address_from_url("https://example.com/0xINVALID");
     assert_eq!(result2, None);
-    
+
     let result3 = fetcher.extract_address_from_url("https://example.com/0x123");
     assert_eq!(result3, None);
 }
@@ -316,7 +357,7 @@ fn test_extract_address_from_url_no_address() {
 #[test]
 fn test_chain_to_morpho_chain_id() {
     let fetcher = HistoricalFetcher::new(None);
-    
+
     assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Ethereum), 1);
     assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Base), 8453);
     assert_eq!(fetcher.chain_to_morpho_chain_id(&Chain::Arbitrum), 42161);
@@ -328,19 +369,22 @@ fn test_chain_to_morpho_chain_id() {
 #[test]
 fn test_date_range_validation() {
     let start = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
-    let end   = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
-    
+    let end = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+
     assert!(start < end, "Start date should be before end date");
-    
+
     let duration = end.signed_duration_since(start);
-    assert!(duration.num_days() <= 90, "Should not exceed 90-day backfill limit");
+    assert!(
+        duration.num_days() <= 90,
+        "Should not exceed 90-day backfill limit"
+    );
 }
 
 #[test]
 fn test_graph_api_key_configuration() {
     let fetcher_no_key = HistoricalFetcher::new(None);
     assert!(fetcher_no_key.graph_api_key.is_none());
-    
+
     let test_key = "test_api_key_12345".to_string();
     let fetcher_with_key = HistoricalFetcher::new(Some(test_key.clone()));
     assert_eq!(fetcher_with_key.graph_api_key, Some(test_key));
@@ -351,10 +395,12 @@ fn test_graph_api_key_configuration() {
 async fn test_fetch_lido_historical_real_api() {
     let fetcher = HistoricalFetcher::new(None);
     let start = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
-    let end   = Utc.with_ymd_and_hms(2026, 2, 10, 0, 0, 0).unwrap();
-    
-    let result = fetcher.fetch_lido_historical(&Chain::Ethereum, start, end).await;
-    
+    let end = Utc.with_ymd_and_hms(2026, 2, 10, 0, 0, 0).unwrap();
+
+    let result = fetcher
+        .fetch_lido_historical(&Chain::Ethereum, start, end)
+        .await;
+
     match result {
         Ok(points) => {
             println!("✅ Fetched {} Lido historical points", points.len());
@@ -373,8 +419,8 @@ async fn test_fetch_lido_historical_real_api() {
 async fn test_fetch_marinade_historical_real_api() {
     let fetcher = HistoricalFetcher::new(None);
     let start = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
-    let end   = Utc.with_ymd_and_hms(2026, 2, 10, 0, 0, 0).unwrap();
-    
+    let end = Utc.with_ymd_and_hms(2026, 2, 10, 0, 0, 0).unwrap();
+
     let result = fetcher.fetch_marinade_historical(start, end).await;
     match result {
         Ok(points) => {
@@ -407,15 +453,15 @@ async fn test_fetch_marinade_historical_real_api() {
 #[ignore]
 async fn test_fetch_aave_base_usdc_real_graph() {
     dotenvy::dotenv().ok();
-    let api_key = std::env::var("THE_GRAPH_API_KEY")
-        .expect("THE_GRAPH_API_KEY must be set to run this test");
+    let api_key =
+        std::env::var("THE_GRAPH_API_KEY").expect("THE_GRAPH_API_KEY must be set to run this test");
 
     let fetcher = HistoricalFetcher::new(Some(api_key));
     let rate = make_rate_result(
         Protocol::Aave, Chain::Base,
         "https://app.aave.com/reserve-overview/?underlyingAsset=0x833589fCd6eDb6E08f4c7C32D4f71b54bDA02913&marketName=proto_base_v3",
     );
-    let end   = Utc::now();
+    let end = Utc::now();
     let start = end - chrono::Duration::days(10);
 
     let result = fetcher
@@ -442,10 +488,16 @@ async fn test_fetch_aave_base_usdc_real_graph() {
                 points.len()
             );
             for p in &points {
-                assert!(p.supply_apy >= 0.0 && p.supply_apy < 100.0,
-                    "APY out of range: {}", p.supply_apy);
-                assert!(p.date >= start && p.date <= end + chrono::Duration::days(1),
-                    "Date out of range: {}", p.date);
+                assert!(
+                    p.supply_apy >= 0.0 && p.supply_apy < 100.0,
+                    "APY out of range: {}",
+                    p.supply_apy
+                );
+                assert!(
+                    p.date >= start && p.date <= end + chrono::Duration::days(1),
+                    "Date out of range: {}",
+                    p.date
+                );
             }
         }
         Err(e) => panic!("Aave Base USDC subgraph query failed: {}", e),
@@ -459,15 +511,15 @@ async fn test_fetch_aave_base_usdc_real_graph() {
 #[ignore]
 async fn test_fetch_aave_ethereum_usdc_real_graph() {
     dotenvy::dotenv().ok();
-    let api_key = std::env::var("THE_GRAPH_API_KEY")
-        .expect("THE_GRAPH_API_KEY must be set to run this test");
+    let api_key =
+        std::env::var("THE_GRAPH_API_KEY").expect("THE_GRAPH_API_KEY must be set to run this test");
 
     let fetcher = HistoricalFetcher::new(Some(api_key));
     let rate = make_rate_result(
         Protocol::Aave, Chain::Ethereum,
         "https://app.aave.com/reserve-overview/?underlyingAsset=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48&marketName=proto_mainnet_v3",
     );
-    let end   = Utc::now();
+    let end = Utc::now();
     let start = end - chrono::Duration::days(10);
 
     let result = fetcher
@@ -476,7 +528,10 @@ async fn test_fetch_aave_ethereum_usdc_real_graph() {
 
     match result {
         Ok(points) => {
-            println!("Fetched {} Aave Ethereum USDC historical points", points.len());
+            println!(
+                "Fetched {} Aave Ethereum USDC historical points",
+                points.len()
+            );
             assert!(
                 !points.is_empty(),
                 "Aave Ethereum USDC subgraph returned 0 points — reserve ID format is wrong. \
@@ -518,18 +573,18 @@ async fn test_fetch_aave_ethereum_usdc_real_graph() {
 fn test_aave_reserve_id_format_is_documented() {
     // Real Aave Base USDC URL contains the token address as a query param
     let url = "https://app.aave.com/reserve-overview/?underlyingAsset=0x833589fCd6eDb6E08f4c7C32D4f71b54bDA02913&marketName=proto_base_v3";
-    
+
     // We extract: 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 (token address only)
     // Subgraph expects: 0x833589fcd6edb6e08f4c7c32d4f71b54bda029130xa238dd80c259a72e81d7e4664a9801593f98d1c5
     //                   (token address + market address concatenated)
-    
+
     // This is why the query returns empty reserves[] even with correct deployment IDs
     println!("⚠️  KNOWN ISSUE: Token address alone is insufficient for Aave v3 subgraph");
     println!("    URL: {}", url);
     println!("    We extract: 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 (token only)");
     println!("    Subgraph expects: 0x833589fcd6edb6e08f4c7c32d4f71b54bda029130xa238dd80... (token+market)");
     println!("    Result: GraphQL returns {{\"data\": {{\"reserves\": []}}}}");
-    
+
     // This test documents the limitation so future developers understand why historical
     // data collection fails for Aave despite having valid API keys and deployment IDs.
     assert!(
@@ -556,17 +611,17 @@ fn test_aave_empty_reserves_response_is_logged_as_warning() {
             "reserves": []
         }
     });
-    
+
     let reserves: Vec<String> = simulated_response["data"]["reserves"]
         .as_array()
         .map(|arr| arr.iter().map(|_| "".to_string()).collect())
         .unwrap_or_default();
-    
+
     assert!(
         reserves.is_empty(),
         "Subgraph returns empty array when reserve ID is wrong - this is the BUG"
     );
-    
+
     // This is what we currently log when this happens:
     println!("⚠️  No Aave historical data found for reserve");
     println!("    This can mean:");
@@ -586,22 +641,22 @@ fn test_aave_v3_reserve_id_format_by_chain() {
     // USDC reserve ID = 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 (USDC token)
     //                 + 0xa238dd80c259a72e81d7e4664a9801593f98d1c5 (Base market address)
     //                 = "0x833589fcd6edb6e08f4c7c32d4f71b54bda029130xa238dd80c259a72e81d7e4664a9801593f98d1c5"
-    
+
     let token_address = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
     let base_market_address = "0xa238dd80c259a72e81d7e4664a9801593f98d1c5";
     let expected_reserve_id = format!("{}{}", token_address, base_market_address);
-    
+
     println!("Aave v3 Base USDC reserve ID: {}", expected_reserve_id);
     println!("Token:  {}", token_address);
     println!("Market: {}", base_market_address);
-    
+
     // We need to implement a function that constructs this composite ID
     assert_eq!(
-        expected_reserve_id.len(), 
-        84, 
+        expected_reserve_id.len(),
+        84,
         "Reserve ID should be 84 chars (0x + 40 hex + 0x + 40 hex)"
     );
-    
+
     // This test documents the format. When we implement the fix, we should:
     // 1. Store market addresses per chain in config
     // 2. Implement: fn get_aave_reserve_id(token_addr: &str, chain: &Chain) -> String

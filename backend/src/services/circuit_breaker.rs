@@ -60,7 +60,8 @@ impl CircuitBreaker {
                         entry.status = Status::HalfOpen;
                         tracing::info!(
                             "⚡ Circuit half-open for {:?}/{:?} — allowing probe request",
-                            protocol, chain
+                            protocol,
+                            chain
                         );
                         false // allow the probe
                     } else {
@@ -82,7 +83,8 @@ impl CircuitBreaker {
             if entry.status != Status::Closed {
                 tracing::info!(
                     "✅ Circuit closed for {:?}/{:?} after successful probe",
-                    protocol, chain
+                    protocol,
+                    chain
                 );
             }
             entry.consecutive_failures = 0;
@@ -118,8 +120,9 @@ impl CircuitBreaker {
     /// Snapshot of all circuit states for telemetry/dashboard.
     pub async fn snapshot(&self) -> Vec<CircuitSnapshot> {
         let state = self.state.read().await;
-        state.iter().map(|((protocol, chain), s)| {
-            CircuitSnapshot {
+        state
+            .iter()
+            .map(|((protocol, chain), s)| CircuitSnapshot {
                 protocol: protocol.clone(),
                 chain: chain.clone(),
                 consecutive_failures: s.consecutive_failures,
@@ -128,8 +131,8 @@ impl CircuitBreaker {
                     Status::Open => "open".to_string(),
                     Status::HalfOpen => "half-open".to_string(),
                 },
-            }
-        }).collect()
+            })
+            .collect()
     }
 }
 

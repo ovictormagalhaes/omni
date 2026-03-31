@@ -1,10 +1,12 @@
+use crate::models::{
+    BacktestStats, HistoricalQuery, Protocol, RateResult, RateSnapshot, WorkerExecutionRecord,
+};
 use anyhow::Result;
-use chrono::{DateTime, Utc, Datelike};
-use mongodb::{Client, Collection, Database};
-use mongodb::bson::doc;
+use chrono::{DateTime, Datelike, Utc};
 use futures::stream::StreamExt;
+use mongodb::bson::doc;
+use mongodb::{Client, Collection, Database};
 use std::collections::HashSet;
-use crate::models::{RateSnapshot, RateResult, HistoricalQuery, BacktestStats, Protocol, WorkerExecutionRecord};
 
 #[derive(Clone)]
 pub struct HistoricalDataService {
@@ -19,14 +21,17 @@ impl HistoricalDataService {
         let client = Client::with_uri_str(mongodb_url).await?;
         let db: Database = client.database(database);
         let collection: Collection<RateSnapshot> = db.collection("rate_snapshots");
-        let execution_records: Collection<WorkerExecutionRecord> = db.collection("worker_executions");
-        
+        let execution_records: Collection<WorkerExecutionRecord> =
+            db.collection("worker_executions");
+
         // Auto-migration: delete documents where `date` is stored as a String instead of
         // BSON DateTime.  This can happen after upgrading the serde helper annotation.
         // Safe to run on every startup — skips silently when no stale docs exist.
         {
             let raw: Collection<mongodb::bson::Document> = db.collection("rate_snapshots");
-            let result = raw.delete_many(doc! { "date": { "$type": "string" } }).await;
+            let result = raw
+                .delete_many(doc! { "date": { "$type": "string" } })
+                .await;
             match result {
                 Ok(r) if r.deleted_count > 0 => tracing::warn!(
                     "⚠️  Auto-migration: removed {} legacy rate_snapshots \
@@ -41,16 +46,20 @@ impl HistoricalDataService {
         // Create indexes for efficient queries
         Self::create_indexes(&collection).await?;
         Self::create_execution_indexes(&execution_records).await?;
-        
-        Ok(Self { db, collection, execution_records })
+
+        Ok(Self {
+            db,
+            collection,
+            execution_records,
+        })
     }
-    
+
     /// Create database indexes for query optimization
     async fn create_indexes(collection: &Collection<RateSnapshot>) -> Result<()> {
-        use mongodb::IndexModel;
-        use mongodb::options::IndexOptions;
         use mongodb::bson::doc;
-        
+        use mongodb::options::IndexOptions;
+        use mongodb::IndexModel;
+
         // UNIQUE constraint: one snapshot per (vault_id, date).
         // vault_id already encodes protocol+chain+asset+url+operation_type via SHA-256,
         // so this single compound index is sufficient to prevent all duplicates.
@@ -66,12 +75,10 @@ impl HistoricalDataService {
             })
             .options(unique_opts)
             .build();
-        
+
         // Index for date range queries
-        let index_date = IndexModel::builder()
-            .keys(doc! { "date": -1 })
-            .build();
-        
+        let index_date = IndexModel::builder().keys(doc! { "date": -1 }).build();
+
         // Index for protocol/chain queries
         let index_protocol = IndexModel::builder()
             .keys(doc! {
@@ -80,32 +87,35 @@ impl HistoricalDataService {
                 "date":     -1
             })
             .build();
-            
-        collection.create_indexes(vec![index_unique, index_date, index_protocol]).await?;
-        
+
+        collection
+            .create_indexes(vec![index_unique, index_date, index_protocol])
+            .await?;
+
         tracing::info!("MongoDB indexes created for rate_snapshots collection");
         Ok(())
     }
-    
+
     /// Save a daily snapshot from current rate — idempotent via replace_one upsert.
     /// The unique index on (vault_id, date) ensures only one document per vault per day.
     pub async fn save_snapshot(&self, rate: &RateResult, date: DateTime<Utc>) -> Result<()> {
         let snapshot = RateSnapshot::from_rate_result(rate, Self::get_day_start(date));
-        
+
         // Filter matches the unique key (mirrors the unique index fields)
         let filter = doc! {
             "vault_id":       &snapshot.vault_id,
             "date":           snapshot.date,
             "operation_type": bson::to_bson(&snapshot.operation_type)?,
         };
-        
+
         // replace_one: atomically swap the whole document; upsert inserts if missing.
         // snapshot.id is None so no _id is sent in the replacement — MongoDB keeps the
         // existing _id on update or mints a new one on insert.
         let mut options = mongodb::options::ReplaceOptions::default();
         options.upsert = Some(true);
-        
-        match self.collection
+
+        match self
+            .collection
             .replace_one(filter, &snapshot)
             .with_options(options)
             .await
@@ -114,9 +124,10 @@ impl HistoricalDataService {
             Err(e) => {
                 // E11000: duplicate key — another concurrent task already wrote this
                 // snapshot. Treat as success (idempotent).
-                if let mongodb::error::ErrorKind::Write(
-                    mongodb::error::WriteFailure::WriteError(ref we)
-                ) = *e.kind {
+                if let mongodb::error::ErrorKind::Write(mongodb::error::WriteFailure::WriteError(
+                    ref we,
+                )) = *e.kind
+                {
                     if we.code == 11000 {
                         tracing::debug!(
                             "Snapshot already exists (race condition, safe to ignore): \
@@ -139,13 +150,17 @@ impl HistoricalDataService {
             snapshot.asset,
             snapshot.date
         );
-        
+
         Ok(())
     }
-    
+
     /// Save multiple snapshots in batch using parallel upserts with bounded concurrency.
     /// Each snapshot is upserted (idempotent via unique index on vault_id+date+operation_type).
-    pub async fn save_snapshots_batch(&self, rates: &[RateResult], date: DateTime<Utc>) -> Result<usize> {
+    pub async fn save_snapshots_batch(
+        &self,
+        rates: &[RateResult],
+        date: DateTime<Utc>,
+    ) -> Result<usize> {
         if rates.is_empty() {
             return Ok(0);
         }
@@ -153,33 +168,41 @@ impl HistoricalDataService {
         let day_start = Self::get_day_start(date);
         let collection = self.collection.clone();
 
-        let upsert_futures: Vec<_> = rates.iter().map(|rate| {
-            let snapshot = RateSnapshot::from_rate_result(rate, day_start);
-            let coll = collection.clone();
-            async move {
-                let filter = doc! {
-                    "vault_id":       &snapshot.vault_id,
-                    "date":           snapshot.date,
-                    "operation_type": mongodb::bson::to_bson(&snapshot.operation_type)?,
-                };
-                let mut options = mongodb::options::ReplaceOptions::default();
-                options.upsert = Some(true);
-                match coll.replace_one(filter, &snapshot).with_options(options).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => {
-                        // E11000 duplicate key = race condition, treat as success
-                        if let mongodb::error::ErrorKind::Write(
-                            mongodb::error::WriteFailure::WriteError(ref we)
-                        ) = *e.kind {
-                            if we.code == 11000 {
-                                return Ok(());
+        let upsert_futures: Vec<_> = rates
+            .iter()
+            .map(|rate| {
+                let snapshot = RateSnapshot::from_rate_result(rate, day_start);
+                let coll = collection.clone();
+                async move {
+                    let filter = doc! {
+                        "vault_id":       &snapshot.vault_id,
+                        "date":           snapshot.date,
+                        "operation_type": mongodb::bson::to_bson(&snapshot.operation_type)?,
+                    };
+                    let mut options = mongodb::options::ReplaceOptions::default();
+                    options.upsert = Some(true);
+                    match coll
+                        .replace_one(filter, &snapshot)
+                        .with_options(options)
+                        .await
+                    {
+                        Ok(_) => Ok(()),
+                        Err(e) => {
+                            // E11000 duplicate key = race condition, treat as success
+                            if let mongodb::error::ErrorKind::Write(
+                                mongodb::error::WriteFailure::WriteError(ref we),
+                            ) = *e.kind
+                            {
+                                if we.code == 11000 {
+                                    return Ok(());
+                                }
                             }
+                            Err(anyhow::anyhow!(e))
                         }
-                        Err(anyhow::anyhow!(e))
                     }
                 }
-            }
-        }).collect();
+            })
+            .collect();
 
         let total = upsert_futures.len();
         let stream = futures::stream::iter(upsert_futures).buffer_unordered(20);
@@ -193,31 +216,40 @@ impl HistoricalDataService {
             }
         }
 
-        tracing::info!("Saved {}/{} snapshots for date {}", saved_count, total, date);
+        tracing::info!(
+            "Saved {}/{} snapshots for date {}",
+            saved_count,
+            total,
+            date
+        );
         Ok(saved_count)
     }
-    
+
     /// Check if snapshot exists for a specific vault and date
     pub async fn has_snapshot(&self, vault_id: &str, date: DateTime<Utc>) -> Result<bool> {
         let day_start = Self::get_day_start(date);
-        
+
         let filter = doc! {
             "vault_id": vault_id,
             "date": day_start,
         };
-        
+
         let count = self.collection.count_documents(filter).await?;
         Ok(count > 0)
     }
-    
+
     /// Get the latest snapshot date for a vault
     /// P2: Batch check which vault_ids have any snapshot data (1 query instead of N).
-    pub async fn get_vaults_with_data(&self, vault_ids: &[&str]) -> Result<std::collections::HashSet<String>> {
+    pub async fn get_vaults_with_data(
+        &self,
+        vault_ids: &[&str],
+    ) -> Result<std::collections::HashSet<String>> {
         if vault_ids.is_empty() {
             return Ok(std::collections::HashSet::new());
         }
 
-        let ids: Vec<String> = self.collection
+        let ids: Vec<String> = self
+            .collection
             .distinct("vault_id", doc! { "vault_id": { "$in": vault_ids } })
             .await?
             .into_iter()
@@ -228,7 +260,10 @@ impl HistoricalDataService {
     }
 
     /// P2: Batch fetch latest net_apy for multiple vaults (1 aggregation instead of N*2 queries).
-    pub async fn get_latest_apys_batch(&self, vault_ids: &[String]) -> Result<std::collections::HashMap<String, f64>> {
+    pub async fn get_latest_apys_batch(
+        &self,
+        vault_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, f64>> {
         if vault_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
@@ -243,7 +278,8 @@ impl HistoricalDataService {
         ];
 
         let db = &self.db;
-        let mut cursor = db.collection::<mongodb::bson::Document>("rate_snapshots")
+        let mut cursor = db
+            .collection::<mongodb::bson::Document>("rate_snapshots")
             .aggregate(pipeline)
             .await?;
 
@@ -262,18 +298,23 @@ impl HistoricalDataService {
         let filter = doc! {
             "vault_id": vault_id,
         };
-        
+
         let options = mongodb::options::FindOneOptions::builder()
             .sort(doc! { "date": -1 })
             .build();
-        
-        if let Some(snapshot) = self.collection.find_one(filter).with_options(options).await? {
+
+        if let Some(snapshot) = self
+            .collection
+            .find_one(filter)
+            .with_options(options)
+            .await?
+        {
             Ok(Some(snapshot.date))
         } else {
             Ok(None)
         }
     }
-    
+
     /// Get all existing snapshot timestamps for a vault within a date range (batch operation)
     /// This is 1000× faster than calling has_snapshot() in a loop.
     /// Returns exact timestamps, not day-start truncated dates.
@@ -290,24 +331,24 @@ impl HistoricalDataService {
                 "$lte": end,
             }
         };
-        
+
         let projection = doc! { "date": 1, "_id": 0 };
         let options = mongodb::options::FindOptions::builder()
             .projection(projection)
             .build();
-        
+
         let mut cursor = self.collection.find(filter).with_options(options).await?;
         let mut dates = HashSet::new();
-        
+
         while let Some(result) = cursor.next().await {
             if let Ok(snapshot) = result {
                 dates.insert(snapshot.date);
             }
         }
-        
+
         Ok(dates)
     }
-    
+
     /// Save multiple snapshots in a true batch (optimized with insert_many)
     pub async fn save_snapshots_batch_optimized(
         &self,
@@ -316,15 +357,20 @@ impl HistoricalDataService {
         if snapshots.is_empty() {
             return Ok(0);
         }
-        
+
         let _count = snapshots.len();
-        
+
         // Use ordered=false to continue on duplicate key errors
         let options = mongodb::options::InsertManyOptions::builder()
             .ordered(false)
             .build();
-        
-        match self.collection.insert_many(snapshots).with_options(options).await {
+
+        match self
+            .collection
+            .insert_many(snapshots)
+            .with_options(options)
+            .await
+        {
             Ok(result) => {
                 tracing::debug!("Batch inserted {} snapshots", result.inserted_ids.len());
                 Ok(result.inserted_ids.len())
@@ -335,9 +381,7 @@ impl HistoricalDataService {
                 if let mongodb::error::ErrorKind::BulkWrite(ref _bw) = *e.kind {
                     // On duplicate key errors, still return success for what was inserted
                     // MongoDB doesn't provide exact count, so we estimate
-                    tracing::debug!(
-                        "Batch insert had some duplicates (expected, ignored)"
-                    );
+                    tracing::debug!("Batch insert had some duplicates (expected, ignored)");
                     // Return 0 since we can't determine exact count without more complex tracking
                     return Ok(0);
                 }
@@ -345,7 +389,7 @@ impl HistoricalDataService {
             }
         }
     }
-    
+
     /// Check if a successful worker execution record exists for today.
     /// Only returns true when the full collection completed without errors,
     /// so partial runs (crash, timeout) are safely retried on re-execution.
@@ -358,7 +402,7 @@ impl HistoricalDataService {
         let count = self.execution_records.count_documents(filter).await?;
         Ok(count > 0)
     }
-    
+
     /// Query historical data with filters
     pub async fn query_history(&self, query: HistoricalQuery) -> Result<Vec<RateSnapshot>> {
         let mut filter = doc! {
@@ -367,88 +411,87 @@ impl HistoricalDataService {
                 "$lte": query.end_date,
             }
         };
-        
+
         if let Some(protocol) = query.protocol {
             filter.insert("protocol", bson::to_bson(&protocol)?);
         }
-        
+
         if let Some(chain) = query.chain {
             filter.insert("chain", bson::to_bson(&chain)?);
         }
-        
+
         if let Some(asset) = query.asset {
             filter.insert("asset", asset);
         }
-        
-        let mut cursor = self.collection
+
+        let mut cursor = self
+            .collection
             .find(filter)
             .sort(doc! { "date": 1 })
             .await?;
-        
+
         let mut results = Vec::new();
         while let Some(snapshot) = cursor.next().await {
             results.push(snapshot?);
         }
-        
+
         tracing::info!("Retrieved {} historical snapshots", results.len());
         Ok(results)
     }
-    
+
     /// Calculate backtest statistics for a given period
     pub async fn backtest(&self, query: HistoricalQuery) -> Result<BacktestStats> {
         let snapshots = self.query_history(query.clone()).await?;
-        
+
         if snapshots.is_empty() {
             anyhow::bail!("No historical data found for query");
         }
-        
+
         // Use net_apy for all calculations
-        let rates: Vec<f64> = snapshots.iter()
-            .map(|s| s.net_apy)
-            .collect();
-        
+        let rates: Vec<f64> = snapshots.iter().map(|s| s.net_apy).collect();
+
         if rates.is_empty() {
             anyhow::bail!("No valid rate data in historical snapshots");
         }
-        
+
         // Calculate statistics
         let sum: f64 = rates.iter().sum();
         let avg_apy = sum / rates.len() as f64;
         let min_apy = rates.iter().cloned().fold(f64::INFINITY, f64::min);
         let max_apy = rates.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        
+
         // Standard deviation
-        let variance: f64 = rates.iter()
-            .map(|r| (r - avg_apy).powi(2))
-            .sum::<f64>() / rates.len() as f64;
+        let variance: f64 =
+            rates.iter().map(|r| (r - avg_apy).powi(2)).sum::<f64>() / rates.len() as f64;
         let std_deviation = variance.sqrt();
-        
+
         // Find best protocol by average APY
-        let mut protocol_rates: std::collections::HashMap<String, Vec<f64>> = 
+        let mut protocol_rates: std::collections::HashMap<String, Vec<f64>> =
             std::collections::HashMap::new();
-        
+
         for snapshot in &snapshots {
             protocol_rates
                 .entry(format!("{:?}", snapshot.protocol))
                 .or_insert_with(Vec::new)
                 .push(snapshot.net_apy);
         }
-        
-        let (best_protocol_name, best_protocol_avg_apy) = protocol_rates.iter()
+
+        let (best_protocol_name, best_protocol_avg_apy) = protocol_rates
+            .iter()
             .map(|(protocol, rates)| {
                 let avg = rates.iter().sum::<f64>() / rates.len() as f64;
                 (protocol.clone(), avg)
             })
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
             .unwrap_or(("Unknown".to_string(), 0.0));
-        
+
         // Calculate hypothetical earnings on $1M
         let days = (query.end_date - query.start_date).num_days();
         let years = days as f64 / 365.0;
         let earnings_on_1m = 1_000_000.0 * (avg_apy / 100.0) * years;
-        
+
         let asset = query.asset.clone().unwrap_or_else(|| "USDC".to_string());
-        
+
         // Parse protocol name back from string
         let best_protocol = match best_protocol_name.as_str() {
             "Aave" => Protocol::Aave,
@@ -465,7 +508,7 @@ impl HistoricalDataService {
             "RocketPool" => Protocol::RocketPool,
             _ => Protocol::Aave, // Fallback
         };
-        
+
         Ok(BacktestStats {
             asset,
             period_start: query.start_date,
@@ -480,7 +523,7 @@ impl HistoricalDataService {
             sample_size: rates.len(),
         })
     }
-    
+
     /// Get the start of the day (00:00:00 UTC) for a given datetime
     pub fn get_day_start(dt: DateTime<Utc>) -> DateTime<Utc> {
         use chrono::TimeZone;
@@ -488,11 +531,11 @@ impl HistoricalDataService {
             .single()
             .unwrap_or(dt)
     }
-    
+
     // ========== Vault Detail / History ==========
 
     /// Return time-series APY data with daily granularity for the last 90 days.
-    /// 
+    ///
     /// BEHAVIOR:
     /// - Always returns 90 daily data points (one per day)
     /// - Groups multiple rate changes on the same day → takes LAST value of day
@@ -506,8 +549,8 @@ impl HistoricalDataService {
         chain: Option<&crate::models::Chain>,
         asset: Option<&str>,
     ) -> Result<crate::models::VaultHistoryResponse> {
-        use chrono::Duration;
         use crate::models::VaultHistoryPoint;
+        use chrono::Duration;
 
         // Always fetch 90 days for frontend flexibility
         let days_to_fetch = 90i64;
@@ -536,7 +579,10 @@ impl HistoricalDataService {
 
         tracing::info!(
             "vault_history: vault_id={:?} protocol={:?} chain={:?} asset={:?} fetching 90 days",
-            vault_id, protocol, chain, asset
+            vault_id,
+            protocol,
+            chain,
+            asset
         );
 
         // Step 2: Use MongoDB aggregation to group by day
@@ -582,7 +628,7 @@ impl HistoricalDataService {
                     "url": { "$first": "$url" },
                 }
             },
-            // Sort by date again 
+            // Sort by date again
             doc! { "$sort": { "date": 1 } },
         ];
 
@@ -598,12 +644,21 @@ impl HistoricalDataService {
 
         while let Some(result) = cursor.next().await {
             let doc = result?;
-            if let (Some(date), Some(net_apy), Some(base_apy), Some(rewards_apy), Some(liquidity), Some(utilization)) = (
+            if let (
+                Some(date),
+                Some(net_apy),
+                Some(base_apy),
+                Some(rewards_apy),
+                Some(liquidity),
+                Some(utilization),
+            ) = (
                 doc.get_datetime("date").ok(),
                 doc.get_f64("net_apy").ok(),
                 doc.get_f64("base_apy").ok(),
                 doc.get_f64("rewards_apy").ok(),
-                doc.get_i64("liquidity_usd").ok().or_else(|| doc.get_i32("liquidity_usd").ok().map(|v| v as i64)),
+                doc.get_i64("liquidity_usd")
+                    .ok()
+                    .or_else(|| doc.get_i32("liquidity_usd").ok().map(|v| v as i64)),
                 doc.get_i32("utilization_rate").ok(),
             ) {
                 if meta_vault_id.is_none() {
@@ -649,24 +704,27 @@ impl HistoricalDataService {
         // → Find most recent snapshot (could be 6 months old)
         if raw_points.is_empty() {
             tracing::warn!("No data in last 90 days, searching for most recent snapshot");
-            
+
             let mut fallback_filter = base_filter.clone();
             fallback_filter.insert("date", doc! { "$lt": end });
-            
-            if let Some(snapshot) = self.collection
+
+            if let Some(snapshot) = self
+                .collection
                 .find_one(fallback_filter)
                 .sort(doc! { "date": -1 })
                 .await?
             {
                 tracing::info!("Found fallback snapshot from {}", snapshot.date);
-                meta_vault_id = vault_id.map(|s| s.to_string()).or(Some(snapshot.vault_id.clone()));
+                meta_vault_id = vault_id
+                    .map(|s| s.to_string())
+                    .or(Some(snapshot.vault_id.clone()));
                 meta_vault_name = snapshot.vault_name.clone();
                 meta_protocol = Some(snapshot.protocol.clone());
                 meta_chain = Some(snapshot.chain.clone());
                 meta_asset = Some(snapshot.asset.clone());
                 meta_op_type = Some(snapshot.operation_type.clone());
                 meta_url = Some(snapshot.url.clone());
-                
+
                 raw_points.push(VaultHistoryPoint {
                     date: snapshot.date,
                     net_apy: snapshot.net_apy,
@@ -750,36 +808,40 @@ impl HistoricalDataService {
     }
 
     // ========== Worker Execution Records Management ==========
-    
+
     /// Create indexes for execution records collection
-    async fn create_execution_indexes(collection: &Collection<WorkerExecutionRecord>) -> Result<()> {
+    async fn create_execution_indexes(
+        collection: &Collection<WorkerExecutionRecord>,
+    ) -> Result<()> {
         use mongodb::IndexModel;
-        
+
         // Index for querying by execution date
         let index_date = IndexModel::builder()
             .keys(doc! { "executedAt": -1 })
             .build();
-        
+
         // Index for querying by collection date
         let index_collection_date = IndexModel::builder()
             .keys(doc! { "collectionDate": -1 })
             .build();
-        
+
         // Index for querying by status
         let index_status = IndexModel::builder()
             .keys(doc! { "status": 1, "executedAt": -1 })
             .build();
-        
-        collection.create_indexes(vec![index_date, index_collection_date, index_status]).await?;
-        
+
+        collection
+            .create_indexes(vec![index_date, index_collection_date, index_status])
+            .await?;
+
         tracing::info!("Created indexes for worker_executions collection");
         Ok(())
     }
-    
+
     /// Save worker execution record
     pub async fn save_execution_record(&self, record: &WorkerExecutionRecord) -> Result<()> {
         self.execution_records.insert_one(record).await?;
-        
+
         tracing::info!(
             "Saved execution record: status={:?}, collection_date={}, vaults={}, snapshots_inserted={}, duration={}s",
             record.status,
@@ -788,41 +850,43 @@ impl HistoricalDataService {
             record.stats.snapshots_inserted,
             record.duration_seconds
         );
-        
+
         Ok(())
     }
-    
+
     /// Get latest execution records (last N executions)
     pub async fn get_latest_executions(&self, limit: i64) -> Result<Vec<WorkerExecutionRecord>> {
-        let mut cursor = self.execution_records
+        let mut cursor = self
+            .execution_records
             .find(doc! {})
             .sort(doc! { "executedAt": -1 })
             .limit(limit)
             .await?;
-        
+
         let mut records = Vec::new();
         while let Some(record) = cursor.next().await {
             records.push(record?);
         }
-        
+
         Ok(records)
     }
-    
+
     /// Get executions for a specific date
     pub async fn get_executions_for_date(&self, date: &str) -> Result<Vec<WorkerExecutionRecord>> {
-        let mut cursor = self.execution_records
+        let mut cursor = self
+            .execution_records
             .find(doc! { "collectionDate": date })
             .sort(doc! { "executedAt": -1 })
             .await?;
-        
+
         let mut records = Vec::new();
         while let Some(record) = cursor.next().await {
             records.push(record?);
         }
-        
+
         Ok(records)
     }
-    
+
     /// Count total snapshots in database
     pub async fn count_total_snapshots(&self) -> Result<usize> {
         let count = self.collection.count_documents(doc! {}).await?;
@@ -833,7 +897,7 @@ impl HistoricalDataService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{OperationType, Protocol, Chain};
+    use crate::models::{Chain, OperationType, Protocol};
 
     fn make_test_snapshot() -> RateSnapshot {
         RateSnapshot {
@@ -869,10 +933,12 @@ mod tests {
     #[test]
     fn test_rate_snapshot_date_is_bson_datetime_not_string() {
         let snapshot = make_test_snapshot();
-        let doc = bson::to_document(&snapshot)
-            .expect("RateSnapshot must serialize to BSON document");
+        let doc =
+            bson::to_document(&snapshot).expect("RateSnapshot must serialize to BSON document");
 
-        let date_value = doc.get("date").expect("'date' field must exist in serialized BSON");
+        let date_value = doc
+            .get("date")
+            .expect("'date' field must exist in serialized BSON");
 
         assert!(
             matches!(date_value, bson::Bson::DateTime(_)),
@@ -890,10 +956,13 @@ mod tests {
         let snapshot = make_test_snapshot();
         let doc = bson::to_document(&snapshot).unwrap();
 
-        let value = doc.get("collected_at").expect("'collected_at' field must exist");
+        let value = doc
+            .get("collected_at")
+            .expect("'collected_at' field must exist");
         assert!(
             matches!(value, bson::Bson::DateTime(_)),
-            "RateSnapshot.collected_at MUST be BSON DateTime. Got {:?}", value
+            "RateSnapshot.collected_at MUST be BSON DateTime. Got {:?}",
+            value
         );
     }
 
@@ -924,24 +993,42 @@ mod tests {
     /// produce different vault_ids. This prevents supply vs borrow collisions.
     #[test]
     fn test_vault_id_differs_for_supply_vs_borrow() {
-        use crate::models::{RateSnapshot, Action};
+        use crate::models::{Action, RateSnapshot};
         let supply_id = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Base, "USDC", "https://app.aave.com/test",
+            &Protocol::Aave,
+            &Chain::Base,
+            "USDC",
+            "https://app.aave.com/test",
             OperationType::Lending,
             Some(&Action::Supply),
         );
         let borrow_id = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Base, "USDC", "https://app.aave.com/test",
+            &Protocol::Aave,
+            &Chain::Base,
+            "USDC",
+            "https://app.aave.com/test",
             OperationType::Lending,
             Some(&Action::Borrow),
         );
         let staking_no_action = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Base, "USDC", "https://app.aave.com/test",
+            &Protocol::Aave,
+            &Chain::Base,
+            "USDC",
+            "https://app.aave.com/test",
             OperationType::Staking,
             None,
         );
-        assert_ne!(supply_id, borrow_id,   "Supply and Borrow must have different vault_ids");
-        assert_ne!(supply_id, staking_no_action, "Lending Supply and Staking must have different vault_ids");
-        assert_ne!(borrow_id, staking_no_action, "Lending Borrow and Staking must have different vault_ids");
+        assert_ne!(
+            supply_id, borrow_id,
+            "Supply and Borrow must have different vault_ids"
+        );
+        assert_ne!(
+            supply_id, staking_no_action,
+            "Lending Supply and Staking must have different vault_ids"
+        );
+        assert_ne!(
+            borrow_id, staking_no_action,
+            "Lending Borrow and Staking must have different vault_ids"
+        );
     }
 }

@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 use super::RateIndexer;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GraphQLResponse {
@@ -42,11 +42,14 @@ where
 {
     use serde::de::{Deserialize, Error};
     use serde_json::Value;
-    
+
     let value = Value::deserialize(deserializer)?;
     match value {
         Value::String(s) => s.parse::<i32>().map_err(Error::custom),
-        Value::Number(n) => n.as_i64().ok_or_else(|| Error::custom("invalid number")).map(|v| v as i32),
+        Value::Number(n) => n
+            .as_i64()
+            .ok_or_else(|| Error::custom("invalid number"))
+            .map(|v| v as i32),
         _ => Err(Error::custom("expected string or number")),
     }
 }
@@ -149,7 +152,10 @@ impl EulerIndexer {
         match graphql_response.data {
             Some(data) => {
                 let protocol_rates = self.parse_vaults(data.euler_vaults, chain)?;
-                tracing::info!("Fetched {} Euler v2 vaults from Goldsky", protocol_rates.len());
+                tracing::info!(
+                    "Fetched {} Euler v2 vaults from Goldsky",
+                    protocol_rates.len()
+                );
                 Ok(protocol_rates)
             }
             None => {
@@ -176,14 +182,15 @@ impl EulerIndexer {
             // Parse asset from symbol
             // Symbol format can be: "eUSDC-80" or "ePT-USDS-14AUG2025-2" or "eweETHk-1"
             // Extract base asset: remove 'e' prefix, take first part before dash
-            let asset_symbol = vault.symbol
+            let asset_symbol = vault
+                .symbol
                 .trim_start_matches('e')
                 .trim_start_matches('E')
                 .split('-')
                 .next()
                 .unwrap_or("")
                 .to_uppercase();
-            
+
             // Map common assets
             let normalized_symbol = match asset_symbol.as_str() {
                 "WETH" | "WEETHK" | "W" => "ETH",
@@ -192,12 +199,16 @@ impl EulerIndexer {
                 "PT" | "YU" => continue, // Skip PT tokens (Pendle) and YU tokens
                 s => s,
             };
-            
+
             let asset = Asset::from_symbol(normalized_symbol, "Euler");
 
             // Skip unknown assets
             if matches!(asset, Asset::Unknown(_)) {
-                tracing::debug!("Skipping unknown/unsupported asset: {} (from vault: {})", asset_symbol, vault.symbol);
+                tracing::debug!(
+                    "Skipping unknown/unsupported asset: {} (from vault: {})",
+                    asset_symbol,
+                    vault.symbol
+                );
                 continue;
             }
 
@@ -209,7 +220,7 @@ impl EulerIndexer {
             // Example: "15861650230762540699498849" → /1e24 → 15.86% → /2 → 7.93% (matches Euler site)
             let supply_apy_raw = state.supply_apy.parse::<f64>().unwrap_or(0.0);
             let supply_apy = (supply_apy_raw / 1e24) / 2.0; // Net APY after protocol fee
-            
+
             let borrow_apr_raw = state.borrow_apy.parse::<f64>().unwrap_or(0.0);
             // Borrow APY comes in 1e25 format (10x higher precision than supply)
             // Example: 265219174283990000000000000 → /1e25 → 2.65% (matches Euler site)
@@ -219,14 +230,14 @@ impl EulerIndexer {
             let cash = state.cash.parse::<f64>().unwrap_or(0.0);
             let decimals = vault.decimals as u32;
             let divisor = 10_f64.powi(decimals as i32);
-            
+
             // Convert to USD (approximate - ideally fetch price from oracle)
             let available_liquidity_usd = (cash / divisor) as u64;
-            
+
             // Parse total borrows
             let total_borrows = state.total_borrows.parse::<f64>().unwrap_or(0.0);
             let borrowed_usd = (total_borrows / divisor) as u64;
-            
+
             // Total liquidity = cash + borrows
             let total_liquidity_usd = available_liquidity_usd + borrowed_usd;
 
@@ -238,7 +249,7 @@ impl EulerIndexer {
             // reasons that are NOT exposed in the GraphQL API. We can only detect:
             // 1. Supply cap reached (when supplyCap > 0)
             // 2. Low available liquidity (< $100k)
-            // 
+            //
             // supplyCap = 0 means unlimited (no cap)
             // supplyCap > 0 means there's a cap in place
             let supply_active = if let Some(cap_str) = &vault.supply_cap {
@@ -273,7 +284,7 @@ impl EulerIndexer {
                 rewards: rewards_apy,
                 performance_fee: None,
                 active: supply_active,
-                collateral_enabled: true,  // Euler supports collateral
+                collateral_enabled: true, // Euler supports collateral
                 collateral_ltv: 0.80,
                 total_liquidity: total_liquidity_usd,
                 available_liquidity: available_liquidity_usd,
@@ -304,7 +315,8 @@ impl EulerIndexer {
                         } else {
                             // Has a cap - check if we're below 95% of it
                             let total_borrows = state.total_borrows.parse::<f64>().unwrap_or(0.0);
-                            (total_borrows < (borrow_cap * 0.95)) && (available_liquidity_usd > 100_000)
+                            (total_borrows < (borrow_cap * 0.95))
+                                && (available_liquidity_usd > 100_000)
                         }
                     } else {
                         // Can't parse cap, check liquidity
@@ -325,7 +337,7 @@ impl EulerIndexer {
                     rewards: 0.0,
                     performance_fee: None,
                     active: borrow_active,
-                    collateral_enabled: false,  // Borrow doesn't provide collateral
+                    collateral_enabled: false, // Borrow doesn't provide collateral
                     collateral_ltv: 0.0,
                     total_liquidity: borrowed_usd,
                     available_liquidity: available_liquidity_usd,
@@ -384,7 +396,7 @@ mod tests {
         let indexer = EulerIndexer::new();
         let url = indexer.get_protocol_url(Some("0xa94F9CE821C7bD57cc12991CB46ca19f5789278F"));
         assert_eq!(url, "https://app.euler.finance/vault/0xa94F9CE821C7bD57cc12991CB46ca19f5789278F?network=ethereum");
-        
+
         let default_url = indexer.get_protocol_url(None);
         assert_eq!(default_url, "https://app.euler.finance/");
     }
@@ -393,14 +405,19 @@ mod tests {
     async fn test_fetch_rates_ethereum() {
         let indexer = EulerIndexer::new();
         let result = indexer.fetch_rates(&Chain::Ethereum).await;
-        
+
         match result {
             Ok(rates) => {
                 println!("Euler Ethereum: {} vaults", rates.len());
                 for rate in rates.iter().take(3) {
-                    println!("  {} {} {}: Supply APY {:.2}%, Rewards {:.2}%", 
-                        rate.protocol, rate.chain, rate.asset.symbol(), 
-                        rate.supply_apy, rate.rewards);
+                    println!(
+                        "  {} {} {}: Supply APY {:.2}%, Rewards {:.2}%",
+                        rate.protocol,
+                        rate.chain,
+                        rate.asset.symbol(),
+                        rate.supply_apy,
+                        rate.rewards
+                    );
                 }
             }
             Err(e) => {

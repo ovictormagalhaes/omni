@@ -4,8 +4,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::models::{Asset, Chain, Protocol, PoolRate, PoolType, FeeTier};
 use super::PoolIndexer;
+use crate::models::{Asset, Chain, FeeTier, PoolRate, PoolType, Protocol};
 
 /// Uniswap V3 subgraph IDs on The Graph decentralized network
 /// Verified working as of 2026-03-25
@@ -104,7 +104,11 @@ impl UniswapV3Indexer {
             chain_id
         );
 
-        tracing::debug!("[Merkl] Fetching rewards for chain {:?} (chainId={})", chain, chain_id);
+        tracing::debug!(
+            "[Merkl] Fetching rewards for chain {:?} (chainId={})",
+            chain,
+            chain_id
+        );
 
         let response = match self.client.get(&url).send().await {
             Ok(r) => r,
@@ -129,7 +133,9 @@ impl UniswapV3Indexer {
                 continue;
             }
             // Filter for UniswapV3 pools by name (Merkl v4 doesn't support protocol filter)
-            let is_uni_v3 = opp.name.as_deref()
+            let is_uni_v3 = opp
+                .name
+                .as_deref()
                 .map(|n| n.contains("UniswapV3") || n.contains("Uniswap V3"))
                 .unwrap_or(false);
             if !is_uni_v3 {
@@ -142,7 +148,11 @@ impl UniswapV3Indexer {
             }
         }
 
-        tracing::info!("[Merkl] Found {} active reward pools for {:?}", rewards_map.len(), chain);
+        tracing::info!(
+            "[Merkl] Found {} active reward pools for {:?}",
+            rewards_map.len(),
+            chain
+        );
         rewards_map
     }
 
@@ -206,20 +216,22 @@ impl UniswapV3Indexer {
             "#
         });
 
-        tracing::info!("[Uniswap V3] Fetching pools for {:?} from subgraph {}", chain, subgraph_id);
+        tracing::info!(
+            "[Uniswap V3] Fetching pools for {:?} from subgraph {}",
+            chain,
+            subgraph_id
+        );
 
-        let http_response = self.client
-            .post(&url)
-            .json(&query)
-            .send()
-            .await?;
+        let http_response = self.client.post(&url).json(&query).send().await?;
 
         let status = http_response.status();
         if !status.is_success() {
             let body = http_response.text().await.unwrap_or_default();
             tracing::warn!(
                 "[Uniswap V3] HTTP {} for {:?}: {}",
-                status, chain, &body[..body.len().min(200)]
+                status,
+                chain,
+                &body[..body.len().min(200)]
             );
             return Ok(vec![]);
         }
@@ -230,7 +242,9 @@ impl UniswapV3Indexer {
             Err(e) => {
                 tracing::warn!(
                     "[Uniswap V3] Failed to parse response for {:?}: {} — body starts with: {}",
-                    chain, e, &body[..body.len().min(200)]
+                    chain,
+                    e,
+                    &body[..body.len().min(200)]
                 );
                 return Ok(vec![]);
             }
@@ -263,7 +277,11 @@ impl UniswapV3Indexer {
                     matched += 1;
                 }
             }
-            tracing::info!("[Uniswap V3] Merged Merkl rewards into {} pools for {:?}", matched, chain);
+            tracing::info!(
+                "[Uniswap V3] Merged Merkl rewards into {} pools for {:?}",
+                matched,
+                chain
+            );
         }
 
         Ok(rates)
@@ -287,7 +305,11 @@ impl UniswapV3Indexer {
             let fees: f64 = day.fees_usd.parse().unwrap_or(0.0);
             let vol: f64 = day.volume_usd.parse().unwrap_or(0.0);
             let day_tvl: f64 = day.tvl_usd.parse().unwrap_or(tvl);
-            let apr = if day_tvl > 0.0 { (fees * 365.0 / day_tvl) * 100.0 } else { 0.0 };
+            let apr = if day_tvl > 0.0 {
+                (fees * 365.0 / day_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees, vol, apr)
         } else {
             (0.0, 0.0, 0.0)
@@ -296,21 +318,32 @@ impl UniswapV3Indexer {
         // 7-day averages — extrapolate to 7 days when fewer days of data are available
         let (fees_7d, volume_7d, fee_apr_7d) = if !pool.pool_day_data.is_empty() {
             let days = pool.pool_day_data.len() as f64;
-            let total_fees: f64 = pool.pool_day_data.iter()
+            let total_fees: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.fees_usd.parse::<f64>().unwrap_or(0.0))
                 .sum();
-            let total_volume: f64 = pool.pool_day_data.iter()
+            let total_volume: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.volume_usd.parse::<f64>().unwrap_or(0.0))
                 .sum();
-            let avg_tvl: f64 = pool.pool_day_data.iter()
+            let avg_tvl: f64 = pool
+                .pool_day_data
+                .iter()
                 .map(|d| d.tvl_usd.parse::<f64>().unwrap_or(0.0))
-                .sum::<f64>() / days;
+                .sum::<f64>()
+                / days;
             let daily_avg_fees = total_fees / days;
             let daily_avg_volume = total_volume / days;
             // Extrapolate to 7 days so volume_7d and fees_7d represent full-week estimates
             let fees_7d = daily_avg_fees * 7.0;
             let volume_7d = daily_avg_volume * 7.0;
-            let apr = if avg_tvl > 0.0 { (daily_avg_fees * 365.0 / avg_tvl) * 100.0 } else { 0.0 };
+            let apr = if avg_tvl > 0.0 {
+                (daily_avg_fees * 365.0 / avg_tvl) * 100.0
+            } else {
+                0.0
+            };
             (fees_7d, volume_7d, apr)
         } else {
             (0.0, 0.0, 0.0)
@@ -360,7 +393,8 @@ impl UniswapV3Indexer {
     }
 
     fn get_subgraph_id(chain_slug: &str) -> Option<&'static str> {
-        SUBGRAPH_IDS.iter()
+        SUBGRAPH_IDS
+            .iter()
             .find(|(slug, _)| *slug == chain_slug)
             .map(|(_, id)| *id)
     }
@@ -385,7 +419,10 @@ impl UniswapV3Indexer {
             Chain::Celo => "celo",
             _ => "ethereum",
         };
-        format!("https://app.uniswap.org/explore/pools/{}/{}", chain_slug, pool_address)
+        format!(
+            "https://app.uniswap.org/explore/pools/{}/{}",
+            chain_slug, pool_address
+        )
     }
 }
 

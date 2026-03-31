@@ -3,9 +3,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
-use crate::indexers::defillama_pools::DefiLlamaCache;
 use super::RateIndexer;
+use crate::indexers::defillama_pools::DefiLlamaCache;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // Radiant Capital - DeFiLlama Integration
@@ -83,11 +83,17 @@ impl RadiantIndexer {
         tracing::info!("[Radiant] Fetching rates for {:?} from DeFiLlama", chain);
 
         let radiant_pools: Vec<DefiLlamaPool> = if let Some(ref cache) = self.defillama_cache {
-            cache.get_pools().await?
+            cache
+                .get_pools()
+                .await?
                 .iter()
                 .filter(|p| {
-                    p.project.as_deref().is_some_and(|s| s.eq_ignore_ascii_case("radiant-v2"))
-                        && p.chain.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(chain_name))
+                    p.project
+                        .as_deref()
+                        .is_some_and(|s| s.eq_ignore_ascii_case("radiant-v2"))
+                        && p.chain
+                            .as_deref()
+                            .is_some_and(|s| s.eq_ignore_ascii_case(chain_name))
                 })
                 .map(|p| DefiLlamaPool {
                     pool: p.pool.clone().unwrap_or_default(),
@@ -105,28 +111,37 @@ impl RadiantIndexer {
                 })
                 .collect()
         } else {
-            let response = self.client
+            let response = self
+                .client
                 .get(DEFILLAMA_POOLS_URL)
                 .header("Accept", "application/json")
                 .send()
                 .await?;
 
             if !response.status().is_success() {
-                tracing::warn!("[Radiant] DeFiLlama API returned status: {}", response.status());
+                tracing::warn!(
+                    "[Radiant] DeFiLlama API returned status: {}",
+                    response.status()
+                );
                 return Ok(vec![]);
             }
 
             let pools_response: DefiLlamaPoolResponse = response.json().await?;
 
-            pools_response.data.into_iter()
+            pools_response
+                .data
+                .into_iter()
                 .filter(|p| {
-                    p.project.to_lowercase() == "radiant-v2"
-                        && p.chain.to_lowercase() == chain_name
+                    p.project.to_lowercase() == "radiant-v2" && p.chain.to_lowercase() == chain_name
                 })
                 .collect()
         };
 
-        tracing::debug!("[Radiant] Found {} pools on {:?}", radiant_pools.len(), chain);
+        tracing::debug!(
+            "[Radiant] Found {} pools on {:?}",
+            radiant_pools.len(),
+            chain
+        );
 
         let mut rates = Vec::new();
 
@@ -152,8 +167,12 @@ impl RadiantIndexer {
             let available_liquidity = (total_supply - total_borrow).max(0.0);
             let ltv = pool.ltv.unwrap_or(0.0) / 100.0;
 
-            if tvl < 1000.0 { continue; }
-            if supply_apy > 1000.0 || borrow_apr > 1000.0 { continue; }
+            if tvl < 1000.0 {
+                continue;
+            }
+            if supply_apy > 1000.0 || borrow_apr > 1000.0 {
+                continue;
+            }
 
             rates.push(ProtocolRate {
                 protocol: Protocol::Radiant,
@@ -216,7 +235,10 @@ impl RadiantIndexer {
             Chain::Ethereum => "1",
             _ => "42161",
         };
-        format!("https://app.radiant.capital/#/markets?chainId={}", chain_slug)
+        format!(
+            "https://app.radiant.capital/#/markets?chainId={}",
+            chain_slug
+        )
     }
 }
 

@@ -3,9 +3,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::models::{Asset, Chain, Protocol, ProtocolRate, Action, OperationType};
-use crate::indexers::defillama_pools::DefiLlamaCache;
 use super::RateIndexer;
+use crate::indexers::defillama_pools::DefiLlamaCache;
+use crate::models::{Action, Asset, Chain, OperationType, Protocol, ProtocolRate};
 
 // ============================================================================
 // EtherFi - DeFiLlama Integration
@@ -70,12 +70,16 @@ impl EtherFiIndexer {
         tracing::info!("[EtherFi] Fetching rates from DeFiLlama");
 
         let etherfi_pools: Vec<DefiLlamaPool> = if let Some(ref cache) = self.defillama_cache {
-            cache.get_pools().await?
+            cache
+                .get_pools()
+                .await?
                 .iter()
                 .filter(|p| {
                     let proj = p.project.as_deref().unwrap_or("").to_lowercase();
                     (proj == "ether.fi-stake" || proj == "ether.fi-liquid")
-                        && p.chain.as_deref().is_some_and(|s| s.eq_ignore_ascii_case("ethereum"))
+                        && p.chain
+                            .as_deref()
+                            .is_some_and(|s| s.eq_ignore_ascii_case("ethereum"))
                 })
                 .map(|p| DefiLlamaPool {
                     pool: p.pool.clone().unwrap_or_default(),
@@ -90,20 +94,26 @@ impl EtherFiIndexer {
                 })
                 .collect()
         } else {
-            let response = self.client
+            let response = self
+                .client
                 .get(DEFILLAMA_POOLS_URL)
                 .header("Accept", "application/json")
                 .send()
                 .await?;
 
             if !response.status().is_success() {
-                tracing::warn!("[EtherFi] DeFiLlama API returned status: {}", response.status());
+                tracing::warn!(
+                    "[EtherFi] DeFiLlama API returned status: {}",
+                    response.status()
+                );
                 return Ok(vec![]);
             }
 
             let pools_response: DefiLlamaPoolResponse = response.json().await?;
 
-            pools_response.data.into_iter()
+            pools_response
+                .data
+                .into_iter()
                 .filter(|p| {
                     let proj = p.project.to_lowercase();
                     (proj == "ether.fi-stake" || proj == "ether.fi-liquid")
@@ -122,8 +132,12 @@ impl EtherFiIndexer {
             let rewards = pool.apy_reward.unwrap_or(0.0);
             let tvl = pool.tvl_usd.unwrap_or(0.0);
 
-            if tvl < 1000.0 { continue; }
-            if supply_apy > 100.0 { continue; }
+            if tvl < 1000.0 {
+                continue;
+            }
+            if supply_apy > 100.0 {
+                continue;
+            }
 
             let op_type = if pool.project.to_lowercase().contains("liquid") {
                 OperationType::Vault

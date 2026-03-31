@@ -1,11 +1,11 @@
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 use bson;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 // Custom serializer for f64 with 5 decimal places
 mod round_f64_5 {
-    use serde::{Serializer};
-    
+    use serde::Serializer;
+
     pub fn serialize<S>(value: &f64, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -168,13 +168,47 @@ impl<'de> Deserialize<'de> for Protocol {
             _ => Err(serde::de::Error::unknown_variant(
                 &s,
                 &[
-                    "aave-v3", "kamino", "morpho", "fluid", "sparklend", "justlend",
-                    "euler", "jupiter", "lido", "marinade", "jito", "rocketpool",
-                    "uniswap-v3", "uniswap-v4", "raydium", "compound-v3", "venus",
-                    "pendle", "ethena", "etherfi", "curve", "pancakeswap", "aerodrome",
-                    "velodrome", "orca", "meteora", "benqi", "radiant", "sushiswap",
-                    "camelot", "traderjoe", "sky", "silo", "fraxeth", "balancer",
-                    "maverick", "aura", "convex", "yearn", "stargate", "gmx",
+                    "aave-v3",
+                    "kamino",
+                    "morpho",
+                    "fluid",
+                    "sparklend",
+                    "justlend",
+                    "euler",
+                    "jupiter",
+                    "lido",
+                    "marinade",
+                    "jito",
+                    "rocketpool",
+                    "uniswap-v3",
+                    "uniswap-v4",
+                    "raydium",
+                    "compound-v3",
+                    "venus",
+                    "pendle",
+                    "ethena",
+                    "etherfi",
+                    "curve",
+                    "pancakeswap",
+                    "aerodrome",
+                    "velodrome",
+                    "orca",
+                    "meteora",
+                    "benqi",
+                    "radiant",
+                    "sushiswap",
+                    "camelot",
+                    "traderjoe",
+                    "sky",
+                    "silo",
+                    "fraxeth",
+                    "balancer",
+                    "maverick",
+                    "aura",
+                    "convex",
+                    "yearn",
+                    "stargate",
+                    "gmx",
                 ],
             )),
         }
@@ -288,10 +322,26 @@ impl<'de> Deserialize<'de> for Chain {
             _ => Err(serde::de::Error::unknown_variant(
                 &s,
                 &[
-                    "ethereum", "solana", "bsc", "bitcoin", "tron", "base",
-                    "arbitrum", "polygon", "optimism", "avalanche", "sui",
-                    "hyperliquid", "scroll", "mantle", "linea", "blast",
-                    "fantom", "zksync", "aptos", "celo",
+                    "ethereum",
+                    "solana",
+                    "bsc",
+                    "bitcoin",
+                    "tron",
+                    "base",
+                    "arbitrum",
+                    "polygon",
+                    "optimism",
+                    "avalanche",
+                    "sui",
+                    "hyperliquid",
+                    "scroll",
+                    "mantle",
+                    "linea",
+                    "blast",
+                    "fantom",
+                    "zksync",
+                    "aptos",
+                    "celo",
                 ],
             )),
         }
@@ -319,62 +369,62 @@ pub enum KnownAsset {
     USDC,
     USDT,
     DAI,
-    USDE,   // Ethena USD
+    USDE, // Ethena USD
     #[serde(rename = "SUSDE")]
-    SUSDE,  // Staked Ethena USD
-    PYUSD,  // PayPal USD
-    FRAX,   // Frax
-    LUSD,   // Liquity USD
-    GHO,    // Aave GHO
+    SUSDE, // Staked Ethena USD
+    PYUSD, // PayPal USD
+    FRAX, // Frax
+    LUSD, // Liquity USD
+    GHO,  // Aave GHO
     #[serde(rename = "CRVUSD")]
     CRVUSD, // Curve USD
     #[serde(rename = "USDD")]
-    USDD,   // Tron USDD
-    
+    USDD, // Tron USDD
+
     // EUR Stablecoins
-    EURC,   // Circle EUR
-    EURS,   // STASIS EUR
-    EURT,   // Tether EUR
-    
+    EURC, // Circle EUR
+    EURS, // STASIS EUR
+    EURT, // Tether EUR
+
     // ETH and LSTs
     WETH,
     #[serde(rename = "ETH")]
     ETH,
     #[serde(rename = "STETH")]
-    STETH,  // Lido stETH
+    STETH, // Lido stETH
     WSTETH, // Lido Wrapped Staked ETH
     RETH,   // Rocket Pool ETH
     CBETH,  // Coinbase ETH
     #[serde(rename = "SETH2")]
-    SETH2,  // StakeWise ETH2
+    SETH2, // StakeWise ETH2
     #[serde(rename = "SFRXETH")]
     SFRXETH, // Staked Frax ETH
-    
+
     // BTC
     WBTC,
-    CBBTC,  // Coinbase Wrapped BTC
-    TBTC,   // Threshold BTC
-    SBTC,   // Synth BTC
-    
+    CBBTC, // Coinbase Wrapped BTC
+    TBTC,  // Threshold BTC
+    SBTC,  // Synth BTC
+
     // SOL and LSTs
     SOL,
     #[serde(rename = "STSOL")]
-    STSOL,   // Lido stSOL
+    STSOL, // Lido stSOL
     #[serde(rename = "MSOL")]
-    MSOL,    // Marinade mSOL
+    MSOL, // Marinade mSOL
     #[serde(rename = "JITOSOL")]
     JITOSOL, // Jito JitoSOL
     #[serde(rename = "JUPSOL")]
-    JUPSOL,  // Jupiter JupSOL
-    
+    JUPSOL, // Jupiter JupSOL
+
     // Other
-    TRX,    // Tron
-    LINK,   // Chainlink
-    AAVE,   // Aave token
-    UNI,    // Uniswap
-    CRV,    // Curve
-    BAL,    // Balancer
-    COMP,   // Compound
+    TRX,  // Tron
+    LINK, // Chainlink
+    AAVE, // Aave token
+    UNI,  // Uniswap
+    CRV,  // Curve
+    BAL,  // Balancer
+    COMP, // Compound
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -401,7 +451,7 @@ impl Asset {
             Asset::Unknown(symbol) => symbol.clone(),
         }
     }
-    
+
     pub fn category(&self) -> Vec<AssetCategory> {
         match self {
             Asset::Known(known) => known.category(),
@@ -415,12 +465,24 @@ impl Asset {
         let s = symbol.to_uppercase();
 
         // USD / Stablecoin patterns
-        if s.contains("USD") || s.contains("DAI") || s.contains("FRAX")
-            || s.contains("LUSD") || s.contains("GHO") || s.contains("TUSD")
-            || s.contains("BUSD") || s.contains("GUSD") || s.contains("DOLA")
-            || s.contains("MIM") || s.contains("USDX") || s.contains("SUSD")
-            || s.contains("CUSD") || s.contains("MUSD") || s.contains("EUSD")
-            || s.contains("USDB") || s == "FDUSD" || s == "USDP"
+        if s.contains("USD")
+            || s.contains("DAI")
+            || s.contains("FRAX")
+            || s.contains("LUSD")
+            || s.contains("GHO")
+            || s.contains("TUSD")
+            || s.contains("BUSD")
+            || s.contains("GUSD")
+            || s.contains("DOLA")
+            || s.contains("MIM")
+            || s.contains("USDX")
+            || s.contains("SUSD")
+            || s.contains("CUSD")
+            || s.contains("MUSD")
+            || s.contains("EUSD")
+            || s.contains("USDB")
+            || s == "FDUSD"
+            || s == "USDP"
         {
             // Top stables get both tags, others just Stablecoin
             if s.contains("USDC") || s.contains("USDT") {
@@ -430,25 +492,42 @@ impl Asset {
         }
 
         // BTC patterns
-        if s.contains("BTC") || s.contains("SBTC") || s.contains("RENBTC")
-            || s.contains("TBTC") || s == "BBTC" || s.contains("PBTC")
+        if s.contains("BTC")
+            || s.contains("SBTC")
+            || s.contains("RENBTC")
+            || s.contains("TBTC")
+            || s == "BBTC"
+            || s.contains("PBTC")
         {
             return vec![AssetCategory::BtcCorrelated];
         }
 
         // ETH patterns
-        if s.contains("ETH") || s.contains("STETH") || s.contains("SETH")
-            || s.contains("RETH") || s.contains("ANKRETH") || s.contains("SWETH")
-            || s.contains("OETH") || s.contains("METH") || s.contains("EETH")
-            || s.contains("WEETH") || s.contains("EZETH")
+        if s.contains("ETH")
+            || s.contains("STETH")
+            || s.contains("SETH")
+            || s.contains("RETH")
+            || s.contains("ANKRETH")
+            || s.contains("SWETH")
+            || s.contains("OETH")
+            || s.contains("METH")
+            || s.contains("EETH")
+            || s.contains("WEETH")
+            || s.contains("EZETH")
         {
             return vec![AssetCategory::EthCorrelated];
         }
 
         // SOL patterns
-        if s.contains("SOL") || s.contains("MSOL") || s.contains("JITOSOL")
-            || s.contains("JUPSOL") || s.contains("BSOL") || s.contains("HSOL")
-            || s.contains("VSOL") || s.contains("STSOL") || s.contains("DSOL")
+        if s.contains("SOL")
+            || s.contains("MSOL")
+            || s.contains("JITOSOL")
+            || s.contains("JUPSOL")
+            || s.contains("BSOL")
+            || s.contains("HSOL")
+            || s.contains("VSOL")
+            || s.contains("STSOL")
+            || s.contains("DSOL")
             || s.contains("INF") && s.contains("SOL")
         {
             return vec![AssetCategory::SolCorrelated];
@@ -456,7 +535,7 @@ impl Asset {
 
         vec![]
     }
-    
+
     /// Helper function to normalize asset strings across indexers
     pub fn from_symbol(symbol: &str, protocol: &str) -> Asset {
         let known = match symbol.to_uppercase().as_str() {
@@ -499,11 +578,15 @@ impl Asset {
             "COMP" => Some(KnownAsset::COMP),
             _ => None,
         };
-        
+
         match known {
             Some(k) => Asset::Known(k),
             None => {
-                tracing::warn!("[{}] Unknown asset detected: '{}' - adding as Unknown", protocol, symbol);
+                tracing::warn!(
+                    "[{}] Unknown asset detected: '{}' - adding as Unknown",
+                    protocol,
+                    symbol
+                );
                 Asset::Unknown(symbol.to_uppercase())
             }
         }
@@ -516,21 +599,23 @@ impl KnownAsset {
         match self {
             // USD Correlated: apenas USDC e USDT
             USDC | USDT => vec![AssetCategory::UsdCorrelated, AssetCategory::Stablecoin],
-            
+
             // Stablecoin: todas as outras stablecoins fiat-pegged
-            DAI | USDE | SUSDE | PYUSD | FRAX | LUSD | GHO | CRVUSD | USDD |
-            EURC | EURS | EURT => vec![AssetCategory::Stablecoin],
-            
+            DAI | USDE | SUSDE | PYUSD | FRAX | LUSD | GHO | CRVUSD | USDD | EURC | EURS | EURT => {
+                vec![AssetCategory::Stablecoin]
+            }
+
             // BTC Correlated
             WBTC | CBBTC | TBTC | SBTC => vec![AssetCategory::BtcCorrelated],
-            
+
             // ETH Correlated
-            ETH | WETH | STETH | WSTETH | RETH | CBETH | SETH2 | SFRXETH => 
-                vec![AssetCategory::EthCorrelated],
-            
+            ETH | WETH | STETH | WSTETH | RETH | CBETH | SETH2 | SFRXETH => {
+                vec![AssetCategory::EthCorrelated]
+            }
+
             // SOL Correlated
             SOL | STSOL | MSOL | JITOSOL | JUPSOL => vec![AssetCategory::SolCorrelated],
-            
+
             // Other tokens don't belong to any filter category
             TRX | LINK | AAVE | UNI | CRV | BAL | COMP => vec![],
         }
@@ -543,14 +628,31 @@ impl Asset {
     pub fn canonical_name(&self) -> String {
         match self {
             Asset::Known(k) => match k {
-                KnownAsset::WBTC | KnownAsset::CBBTC | KnownAsset::TBTC | KnownAsset::SBTC => "BTC".to_string(),
+                KnownAsset::WBTC | KnownAsset::CBBTC | KnownAsset::TBTC | KnownAsset::SBTC => {
+                    "BTC".to_string()
+                }
                 KnownAsset::ETH | KnownAsset::WETH => "ETH".to_string(),
-                KnownAsset::STETH | KnownAsset::WSTETH | KnownAsset::RETH | KnownAsset::CBETH | KnownAsset::SETH2 | KnownAsset::SFRXETH => "LST-ETH".to_string(),
+                KnownAsset::STETH
+                | KnownAsset::WSTETH
+                | KnownAsset::RETH
+                | KnownAsset::CBETH
+                | KnownAsset::SETH2
+                | KnownAsset::SFRXETH => "LST-ETH".to_string(),
                 KnownAsset::USDC | KnownAsset::USDT => "USD".to_string(),
-                KnownAsset::DAI | KnownAsset::USDE | KnownAsset::SUSDE | KnownAsset::PYUSD | KnownAsset::FRAX | KnownAsset::LUSD | KnownAsset::GHO | KnownAsset::CRVUSD | KnownAsset::USDD => "STABLE".to_string(),
+                KnownAsset::DAI
+                | KnownAsset::USDE
+                | KnownAsset::SUSDE
+                | KnownAsset::PYUSD
+                | KnownAsset::FRAX
+                | KnownAsset::LUSD
+                | KnownAsset::GHO
+                | KnownAsset::CRVUSD
+                | KnownAsset::USDD => "STABLE".to_string(),
                 KnownAsset::EURC | KnownAsset::EURS | KnownAsset::EURT => "EUR".to_string(),
                 KnownAsset::SOL => "SOL".to_string(),
-                KnownAsset::MSOL | KnownAsset::JITOSOL | KnownAsset::JUPSOL | KnownAsset::STSOL => "LST-SOL".to_string(),
+                KnownAsset::MSOL | KnownAsset::JITOSOL | KnownAsset::JUPSOL | KnownAsset::STSOL => {
+                    "LST-SOL".to_string()
+                }
                 other => format!("{:?}", other).to_uppercase(),
             },
             Asset::Unknown(s) => s.to_uppercase(),
@@ -582,8 +684,10 @@ pub struct RateQuery {
     #[serde(default)]
     pub chains: Option<String>,
     #[serde(default)]
-    pub protocols: Option<String>,    #[serde(default)]
-    pub operation_types: Option<String>,    #[serde(default)]
+    pub protocols: Option<String>,
+    #[serde(default)]
+    pub operation_types: Option<String>,
+    #[serde(default)]
     pub asset_categories: Option<String>,
     /// Search by token/asset symbol (substring match)
     #[serde(default)]
@@ -775,8 +879,8 @@ pub struct ProtocolRate {
     pub ltv: f64,
     pub operation_type: OperationType,
     pub vault_id: Option<String>,
-    pub vault_name: Option<String>, // Human-readable vault name
-    pub underlying_asset: Option<String>,  // Token contract address
+    pub vault_name: Option<String>,       // Human-readable vault name
+    pub underlying_asset: Option<String>, // Token contract address
     pub timestamp: DateTime<Utc>,
 }
 
@@ -989,7 +1093,6 @@ fn is_zero(v: &f64) -> bool {
     *v == 0.0
 }
 
-
 impl PoolQuery {
     fn parse_categories(raw: &Option<String>) -> Option<Vec<AssetCategory>> {
         raw.as_ref().map(|s| {
@@ -1030,9 +1133,9 @@ impl PoolQuery {
     }
 
     pub fn parse_pool_type(&self) -> Option<PoolType> {
-        self.pool_type.as_ref().and_then(|s| {
-            serde_json::from_str(&format!("\"{}\"", s.trim())).ok()
-        })
+        self.pool_type
+            .as_ref()
+            .and_then(|s| serde_json::from_str(&format!("\"{}\"", s.trim())).ok())
     }
 }
 
@@ -1178,7 +1281,7 @@ impl PoolSnapshot {
         fee_rate_bps: u32,
         pool_address: &str,
     ) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let key = format!(
             "pool|{}|{}|{}|{}|{}|{}",
             format!("{:?}", protocol).to_lowercase(),
@@ -1310,13 +1413,13 @@ impl Chain {
 impl Protocol {
     pub fn all() -> Vec<Protocol> {
         vec![
-            Protocol::Aave, 
-            Protocol::Kamino, 
-            Protocol::Morpho, 
-            Protocol::Fluid, 
-            Protocol::SparkLend, 
-            Protocol::JustLend, 
-            Protocol::Euler, 
+            Protocol::Aave,
+            Protocol::Kamino,
+            Protocol::Morpho,
+            Protocol::Fluid,
+            Protocol::SparkLend,
+            Protocol::JustLend,
+            Protocol::Euler,
             Protocol::Jupiter,
             Protocol::Lido,
             Protocol::Marinade,
@@ -1370,57 +1473,57 @@ pub struct RateSnapshot {
     /// MongoDB document ID
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<bson::oid::ObjectId>,
-    
+
     /// Date of snapshot (UTC, start of day) — stored as BSON Date for range queries
     #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub date: DateTime<Utc>,
-    
+
     /// Unique vault identifier (hash of protocol+chain+asset+url)
     pub vault_id: String,
-    
+
     /// Protocol identifier
     pub protocol: Protocol,
-    
+
     /// Blockchain
     pub chain: Chain,
-    
+
     /// Asset identifier
     pub asset: String,
-    
+
     /// Human-readable vault name (e.g., "Aave USDC Arbitrum", "Kamino USDC Main")
     pub vault_name: Option<String>,
-    
+
     /// Deep link URL to protocol
     pub url: String,
-    
+
     /// Operation type (lending, vault, staking)
     pub operation_type: OperationType,
-    
+
     /// Action (Supply or Borrow) - defaults to Supply for legacy snapshots
     #[serde(default = "default_action")]
     pub action: Action,
-    
+
     /// Net APY (includes base + rewards)
     pub net_apy: f64,
-    
+
     /// Base APY without rewards
     pub base_apy: f64,
-    
+
     /// Rewards APY from protocol tokens
     pub rewards_apy: f64,
-    
+
     /// Total liquidity available (USD)
     pub liquidity_usd: u64,
-    
+
     /// Total Value Locked (USD)
     pub tvl_usd: u64,
-    
+
     /// Utilization rate (0-100)
     pub utilization_rate: u32,
-    
+
     /// Additional metadata
     pub metadata: Option<bson::Document>,
-    
+
     /// When this snapshot was collected
     #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub collected_at: DateTime<Utc>,
@@ -1437,7 +1540,7 @@ impl RateSnapshot {
             rate.operation_type,
             Some(&rate.action),
         );
-        
+
         RateSnapshot {
             id: None,
             date,
@@ -1459,7 +1562,7 @@ impl RateSnapshot {
             collected_at: chrono::Utc::now(),
         }
     }
-    
+
     /// Generate deterministic, stable vault ID from components.
     /// Inputs: protocol + chain + asset + url + operation_type.
     /// Uses SHA-256 (first 16 hex chars = 64 bits) so the ID is:
@@ -1474,8 +1577,10 @@ impl RateSnapshot {
         operation_type: OperationType,
         action: Option<&Action>,
     ) -> String {
-        use sha2::{Sha256, Digest};
-        let action_str = action.map(|a| format!("{:?}", a).to_lowercase()).unwrap_or_default();
+        use sha2::{Digest, Sha256};
+        let action_str = action
+            .map(|a| format!("{:?}", a).to_lowercase())
+            .unwrap_or_default();
         let key = format!(
             "{}|{}|{}|{}|{:?}|{}",
             format!("{:?}", protocol).to_lowercase(),
@@ -1497,19 +1602,19 @@ impl RateSnapshot {
 pub struct HistoricalQuery {
     /// Start date (inclusive)
     pub start_date: DateTime<Utc>,
-    
+
     /// End date (inclusive)
     pub end_date: DateTime<Utc>,
-    
+
     /// Filter by protocol
     pub protocol: Option<Protocol>,
-    
+
     /// Filter by chain
     pub chain: Option<Chain>,
-    
+
     /// Filter by asset
     pub asset: Option<String>,
-    
+
     /// Rate type (supply or borrow)
     pub action: Option<Action>,
 }
@@ -1519,30 +1624,30 @@ pub struct HistoricalQuery {
 pub struct BacktestStats {
     /// Asset analyzed
     pub asset: String,
-    
+
     /// Time period
     pub period_start: DateTime<Utc>,
     pub period_end: DateTime<Utc>,
-    
+
     /// Average APY across period
     pub avg_apy: f64,
-    
+
     /// Minimum APY observed
     pub min_apy: f64,
-    
+
     /// Maximum APY observed
     pub max_apy: f64,
-    
+
     /// Standard deviation (volatility)
     pub std_deviation: f64,
-    
+
     /// Best protocol during period
     pub best_protocol: Protocol,
     pub best_protocol_avg_apy: f64,
-    
+
     /// Hypothetical earnings on $1M investment
     pub earnings_on_1m: f64,
-    
+
     /// Number of data points
     pub sample_size: usize,
 }
@@ -1703,7 +1808,11 @@ pub struct LendingAssetRate {
     #[serde(rename = "netApy", serialize_with = "round_f64_5::serialize")]
     pub net_apy: f64,
     /// Effective APY = netApy weighted by position size (netApy * valueUsd / totalValue)
-    #[serde(rename = "effectiveApy", serialize_with = "round_f64_5::serialize", skip_serializing_if = "is_zero")]
+    #[serde(
+        rename = "effectiveApy",
+        serialize_with = "round_f64_5::serialize",
+        skip_serializing_if = "is_zero"
+    )]
     pub effective_apy: f64,
     pub liquidity: u64,
     #[serde(rename = "valueUsd", skip_serializing_if = "is_zero")]
@@ -1757,29 +1866,29 @@ pub struct WorkerExecutionRecord {
     /// MongoDB document ID
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<bson::oid::ObjectId>,
-    
+
     /// When the worker was executed
     #[serde(rename = "executedAt")]
     pub executed_at: DateTime<Utc>,
-    
+
     /// Target collection date (which day's data was collected)
     #[serde(rename = "collectionDate")]
     pub collection_date: String, // "2026-02-18"
-    
+
     /// Execution status
     pub status: ExecutionStatus,
-    
+
     /// Error details if failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ExecutionError>,
-    
+
     /// Execution statistics
     pub stats: ExecutionStats,
-    
+
     /// Duration in seconds
     #[serde(rename = "durationSeconds")]
     pub duration_seconds: i64,
-    
+
     /// Breakdown by protocol+chain (lending/vault)
     #[serde(rename = "protocolBreakdown")]
     pub protocol_breakdown: Vec<ProtocolStats>,
@@ -1814,31 +1923,31 @@ pub struct ExecutionStats {
     /// Total vaults processed
     #[serde(rename = "vaultsProcessed")]
     pub vaults_processed: usize,
-    
+
     /// Today's snapshots inserted
     #[serde(rename = "snapshotsInserted")]
     pub snapshots_inserted: usize,
-    
+
     /// Snapshots updated (if re-running)
     #[serde(rename = "snapshotsUpdated")]
     pub snapshots_updated: usize,
-    
+
     /// New vaults discovered (first time seeing them)
     #[serde(rename = "newVaultsDiscovered")]
     pub new_vaults_discovered: usize,
-    
+
     /// Backfill snapshots created
     #[serde(rename = "backfillSnapshotsCreated")]
     pub backfill_snapshots_created: usize,
-    
+
     /// Vaults with real historical data fetched
     #[serde(rename = "vaultsWithRealHistory")]
     pub vaults_with_real_history: usize,
-    
+
     /// Vaults skipped (no historical data source available)
     #[serde(rename = "vaultsSkippedNoHistory")]
     pub vaults_skipped_no_history: usize,
-    
+
     /// Total data points in database after execution
     #[serde(rename = "totalSnapshotsInDb")]
     pub total_snapshots_in_db: Option<usize>,
@@ -1895,11 +2004,11 @@ pub struct SystemInfo {
     /// Worker version/commit
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    
+
     /// Hostname/pod name (for k8s)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hostname: Option<String>,
-    
+
     /// Environment (dev, staging, production)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub environment: Option<String>,
@@ -1911,48 +2020,48 @@ pub struct RealtimeRate {
     /// MongoDB _id
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<bson::oid::ObjectId>,
-    
+
     /// Unique vault identifier
     pub vault_id: String,
-    
+
     /// Protocol
     pub protocol: Protocol,
-    
+
     ///Chain
     pub chain: Chain,
-    
+
     /// Asset symbol
     pub asset: String,
-    
+
     /// Asset category
     pub asset_category: AssetCategory,
-    
+
     /// Vault name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vault_name: Option<String>,
-    
+
     /// Deep link URL
     pub url: String,
-    
+
     /// Operation type
     pub operation_type: OperationType,
-    
+
     /// Action (Supply or Borrow)
     pub action: Action,
-    
+
     /// Current (latest) snapshot data
     pub current: CurrentRateData,
-    
+
     /// APY metrics (7D, 30D, 90D averages)
     pub apy_metrics: ApyMetrics,
-    
+
     /// Last update timestamp
     #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub updated_at: DateTime<Utc>,
-    
+
     /// Number of historical snapshots available
     pub snapshot_count: i32,
-    
+
     /// First time this vault was seen
     #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub first_seen: DateTime<Utc>,
@@ -1962,22 +2071,22 @@ pub struct RealtimeRate {
 pub struct CurrentRateData {
     /// Base APY (without rewards)
     pub base_apy: f64,
-    
+
     /// Rewards APY
     pub rewards_apy: f64,
-    
+
     /// Net APY (base + rewards)
     pub net_apy: f64,
-    
+
     /// Available liquidity (USD)
     pub liquidity_usd: u64,
-    
+
     /// Total liquidity/TVL (USD)
     pub tvl_usd: u64,
-    
+
     /// Utilization rate (0-100)
     pub utilization_rate: u32,
-    
+
     /// When this rate was collected
     #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub collected_at: DateTime<Utc>,
@@ -1987,19 +2096,19 @@ pub struct CurrentRateData {
 pub struct ApyMetrics {
     /// Current instant APY
     pub instant: f64,
-    
+
     /// 7-day average APY
     pub apy_7d: f64,
-    
+
     /// 30-day average APY
     pub apy_30d: f64,
-    
+
     /// 60-day average APY
     pub apy_60d: f64,
-    
+
     /// 90-day average APY
     pub apy_90d: f64,
-    
+
     /// APY volatility (standard deviation)
     pub volatility: f64,
 
@@ -2017,11 +2126,26 @@ mod tests {
 
     #[test]
     fn test_protocol_serialize_rename() {
-        assert_eq!(serde_json::to_string(&Protocol::Aave).unwrap(), "\"aave-v3\"");
-        assert_eq!(serde_json::to_string(&Protocol::Uniswap).unwrap(), "\"uniswap-v3\"");
-        assert_eq!(serde_json::to_string(&Protocol::UniswapV4).unwrap(), "\"uniswap-v4\"");
-        assert_eq!(serde_json::to_string(&Protocol::Compound).unwrap(), "\"compound-v3\"");
-        assert_eq!(serde_json::to_string(&Protocol::Morpho).unwrap(), "\"morpho\"");
+        assert_eq!(
+            serde_json::to_string(&Protocol::Aave).unwrap(),
+            "\"aave-v3\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Protocol::Uniswap).unwrap(),
+            "\"uniswap-v3\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Protocol::UniswapV4).unwrap(),
+            "\"uniswap-v4\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Protocol::Compound).unwrap(),
+            "\"compound-v3\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Protocol::Morpho).unwrap(),
+            "\"morpho\""
+        );
     }
 
     #[test]
@@ -2066,7 +2190,11 @@ mod tests {
         for protocol in Protocol::all() {
             let display = format!("{}", protocol);
             let deserialized: Protocol = serde_json::from_str(&format!("\"{}\"", display)).unwrap();
-            assert_eq!(protocol, deserialized, "Roundtrip failed for {:?}", protocol);
+            assert_eq!(
+                protocol, deserialized,
+                "Roundtrip failed for {:?}",
+                protocol
+            );
         }
     }
 
@@ -2086,7 +2214,10 @@ mod tests {
 
     #[test]
     fn test_chain_serialize() {
-        assert_eq!(serde_json::to_string(&Chain::Ethereum).unwrap(), "\"ethereum\"");
+        assert_eq!(
+            serde_json::to_string(&Chain::Ethereum).unwrap(),
+            "\"ethereum\""
+        );
         assert_eq!(serde_json::to_string(&Chain::BSC).unwrap(), "\"bsc\"");
         assert_eq!(serde_json::to_string(&Chain::ZkSync).unwrap(), "\"zksync\"");
     }
@@ -2158,8 +2289,11 @@ mod tests {
         for sym in &["ETH", "WETH", "STETH", "WSTETH", "RETH", "CBETH"] {
             let asset = Asset::from_symbol(sym, "test");
             let cats = asset.category();
-            assert!(cats.contains(&AssetCategory::EthCorrelated),
-                "{} should be EthCorrelated", sym);
+            assert!(
+                cats.contains(&AssetCategory::EthCorrelated),
+                "{} should be EthCorrelated",
+                sym
+            );
         }
     }
 
@@ -2168,8 +2302,11 @@ mod tests {
         for sym in &["BTC", "WBTC", "CBBTC", "TBTC"] {
             let asset = Asset::from_symbol(sym, "test");
             let cats = asset.category();
-            assert!(cats.contains(&AssetCategory::BtcCorrelated),
-                "{} should be BtcCorrelated", sym);
+            assert!(
+                cats.contains(&AssetCategory::BtcCorrelated),
+                "{} should be BtcCorrelated",
+                sym
+            );
         }
     }
 
@@ -2178,8 +2315,11 @@ mod tests {
         for sym in &["SOL", "MSOL", "JITOSOL", "JUPSOL"] {
             let asset = Asset::from_symbol(sym, "test");
             let cats = asset.category();
-            assert!(cats.contains(&AssetCategory::SolCorrelated),
-                "{} should be SolCorrelated", sym);
+            assert!(
+                cats.contains(&AssetCategory::SolCorrelated),
+                "{} should be SolCorrelated",
+                sym
+            );
         }
     }
 
@@ -2212,7 +2352,12 @@ mod tests {
     fn test_canonical_name_btc_family() {
         for sym in &["WBTC", "CBBTC", "TBTC"] {
             let asset = Asset::from_symbol(sym, "test");
-            assert_eq!(asset.canonical_name(), "BTC", "{} canonical should be BTC", sym);
+            assert_eq!(
+                asset.canonical_name(),
+                "BTC",
+                "{} canonical should be BTC",
+                sym
+            );
         }
     }
 
@@ -2296,9 +2441,16 @@ mod tests {
     #[test]
     fn test_rate_query_parse_chains() {
         let query = RateQuery {
-            action: None, assets: None, chains: Some("ethereum,base,arbitrum".to_string()),
-            protocols: None, operation_types: None, asset_categories: None,
-            token: None, min_liquidity: 0, page: 1, page_size: 20,
+            action: None,
+            assets: None,
+            chains: Some("ethereum,base,arbitrum".to_string()),
+            protocols: None,
+            operation_types: None,
+            asset_categories: None,
+            token: None,
+            min_liquidity: 0,
+            page: 1,
+            page_size: 20,
         };
         let chains = query.parse_chains().unwrap();
         assert_eq!(chains.len(), 3);
@@ -2310,10 +2462,16 @@ mod tests {
     #[test]
     fn test_rate_query_parse_protocols() {
         let query = RateQuery {
-            action: None, assets: None, chains: None,
+            action: None,
+            assets: None,
+            chains: None,
             protocols: Some("aave,morpho,compound".to_string()),
-            operation_types: None, asset_categories: None,
-            token: None, min_liquidity: 0, page: 1, page_size: 20,
+            operation_types: None,
+            asset_categories: None,
+            token: None,
+            min_liquidity: 0,
+            page: 1,
+            page_size: 20,
         };
         let protos = query.parse_protocols().unwrap();
         assert_eq!(protos.len(), 3);
@@ -2325,9 +2483,16 @@ mod tests {
     #[test]
     fn test_rate_query_parse_assets() {
         let query = RateQuery {
-            action: None, assets: Some("usdc, eth, wbtc".to_string()), chains: None,
-            protocols: None, operation_types: None, asset_categories: None,
-            token: None, min_liquidity: 0, page: 1, page_size: 20,
+            action: None,
+            assets: Some("usdc, eth, wbtc".to_string()),
+            chains: None,
+            protocols: None,
+            operation_types: None,
+            asset_categories: None,
+            token: None,
+            min_liquidity: 0,
+            page: 1,
+            page_size: 20,
         };
         let assets = query.parse_assets().unwrap();
         assert_eq!(assets, vec!["USDC", "ETH", "WBTC"]);
@@ -2336,10 +2501,16 @@ mod tests {
     #[test]
     fn test_rate_query_parse_operation_types() {
         let query = RateQuery {
-            action: None, assets: None, chains: None, protocols: None,
+            action: None,
+            assets: None,
+            chains: None,
+            protocols: None,
             operation_types: Some("lending,vault".to_string()),
-            asset_categories: None, token: None,
-            min_liquidity: 0, page: 1, page_size: 20,
+            asset_categories: None,
+            token: None,
+            min_liquidity: 0,
+            page: 1,
+            page_size: 20,
         };
         let ops = query.parse_operation_types().unwrap();
         assert_eq!(ops.len(), 2);
@@ -2350,9 +2521,16 @@ mod tests {
     #[test]
     fn test_rate_query_parse_none_returns_none() {
         let query = RateQuery {
-            action: None, assets: None, chains: None, protocols: None,
-            operation_types: None, asset_categories: None, token: None,
-            min_liquidity: 0, page: 1, page_size: 20,
+            action: None,
+            assets: None,
+            chains: None,
+            protocols: None,
+            operation_types: None,
+            asset_categories: None,
+            token: None,
+            min_liquidity: 0,
+            page: 1,
+            page_size: 20,
         };
         assert!(query.parse_chains().is_none());
         assert!(query.parse_protocols().is_none());
@@ -2366,12 +2544,20 @@ mod tests {
     #[test]
     fn test_vault_id_deterministic() {
         let id1 = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Ethereum, "USDC",
-            "https://app.aave.com", OperationType::Lending, Some(&Action::Supply),
+            &Protocol::Aave,
+            &Chain::Ethereum,
+            "USDC",
+            "https://app.aave.com",
+            OperationType::Lending,
+            Some(&Action::Supply),
         );
         let id2 = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Ethereum, "USDC",
-            "https://app.aave.com", OperationType::Lending, Some(&Action::Supply),
+            &Protocol::Aave,
+            &Chain::Ethereum,
+            "USDC",
+            "https://app.aave.com",
+            OperationType::Lending,
+            Some(&Action::Supply),
         );
         assert_eq!(id1, id2);
         assert_eq!(id1.len(), 16);
@@ -2380,12 +2566,20 @@ mod tests {
     #[test]
     fn test_vault_id_different_for_supply_vs_borrow() {
         let supply_id = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Ethereum, "USDC",
-            "https://app.aave.com", OperationType::Lending, Some(&Action::Supply),
+            &Protocol::Aave,
+            &Chain::Ethereum,
+            "USDC",
+            "https://app.aave.com",
+            OperationType::Lending,
+            Some(&Action::Supply),
         );
         let borrow_id = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Ethereum, "USDC",
-            "https://app.aave.com", OperationType::Lending, Some(&Action::Borrow),
+            &Protocol::Aave,
+            &Chain::Ethereum,
+            "USDC",
+            "https://app.aave.com",
+            OperationType::Lending,
+            Some(&Action::Borrow),
         );
         assert_ne!(supply_id, borrow_id);
     }
@@ -2393,12 +2587,20 @@ mod tests {
     #[test]
     fn test_vault_id_different_for_different_chains() {
         let eth_id = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Ethereum, "USDC",
-            "https://app.aave.com", OperationType::Lending, Some(&Action::Supply),
+            &Protocol::Aave,
+            &Chain::Ethereum,
+            "USDC",
+            "https://app.aave.com",
+            OperationType::Lending,
+            Some(&Action::Supply),
         );
         let arb_id = RateSnapshot::generate_vault_id(
-            &Protocol::Aave, &Chain::Arbitrum, "USDC",
-            "https://app.aave.com", OperationType::Lending, Some(&Action::Supply),
+            &Protocol::Aave,
+            &Chain::Arbitrum,
+            "USDC",
+            "https://app.aave.com",
+            OperationType::Lending,
+            Some(&Action::Supply),
         );
         assert_ne!(eth_id, arb_id);
     }
@@ -2406,10 +2608,20 @@ mod tests {
     #[test]
     fn test_pool_vault_id_deterministic() {
         let id1 = PoolSnapshot::generate_pool_vault_id(
-            &Protocol::Uniswap, &Chain::Ethereum, "ETH", "USDC", 30, "0xabc123",
+            &Protocol::Uniswap,
+            &Chain::Ethereum,
+            "ETH",
+            "USDC",
+            30,
+            "0xabc123",
         );
         let id2 = PoolSnapshot::generate_pool_vault_id(
-            &Protocol::Uniswap, &Chain::Ethereum, "ETH", "USDC", 30, "0xabc123",
+            &Protocol::Uniswap,
+            &Chain::Ethereum,
+            "ETH",
+            "USDC",
+            30,
+            "0xabc123",
         );
         assert_eq!(id1, id2);
         assert_eq!(id1.len(), 16);
@@ -2418,10 +2630,20 @@ mod tests {
     #[test]
     fn test_pool_vault_id_different_for_different_fees() {
         let id_30 = PoolSnapshot::generate_pool_vault_id(
-            &Protocol::Uniswap, &Chain::Ethereum, "ETH", "USDC", 30, "0xabc",
+            &Protocol::Uniswap,
+            &Chain::Ethereum,
+            "ETH",
+            "USDC",
+            30,
+            "0xabc",
         );
         let id_5 = PoolSnapshot::generate_pool_vault_id(
-            &Protocol::Uniswap, &Chain::Ethereum, "ETH", "USDC", 5, "0xabc",
+            &Protocol::Uniswap,
+            &Chain::Ethereum,
+            "ETH",
+            "USDC",
+            5,
+            "0xabc",
         );
         assert_ne!(id_30, id_5);
     }
@@ -2499,16 +2721,28 @@ mod tests {
 
     #[test]
     fn test_action_serialization() {
-        assert_eq!(serde_json::to_string(&Action::Supply).unwrap(), "\"supply\"");
-        assert_eq!(serde_json::to_string(&Action::Borrow).unwrap(), "\"borrow\"");
+        assert_eq!(
+            serde_json::to_string(&Action::Supply).unwrap(),
+            "\"supply\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Action::Borrow).unwrap(),
+            "\"borrow\""
+        );
         let a: Action = serde_json::from_str("\"supply\"").unwrap();
         assert_eq!(a, Action::Supply);
     }
 
     #[test]
     fn test_operation_type_serialization() {
-        assert_eq!(serde_json::to_string(&OperationType::Lending).unwrap(), "\"lending\"");
-        assert_eq!(serde_json::to_string(&OperationType::LiquidityPool).unwrap(), "\"liquiditypool\"");
+        assert_eq!(
+            serde_json::to_string(&OperationType::Lending).unwrap(),
+            "\"lending\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OperationType::LiquidityPool).unwrap(),
+            "\"liquiditypool\""
+        );
         let op: OperationType = serde_json::from_str("\"vault\"").unwrap();
         assert_eq!(op, OperationType::Vault);
     }
@@ -2536,12 +2770,24 @@ mod tests {
     #[test]
     fn test_pool_query_parse_pool_type() {
         let query = PoolQuery {
-            asset_categories_0: None, asset_categories_1: None,
-            token_a: None, token_b: None, token: None, pair: None,
-            chains: None, protocols: None,
+            asset_categories_0: None,
+            asset_categories_1: None,
+            token_a: None,
+            token_b: None,
+            token: None,
+            pair: None,
+            chains: None,
+            protocols: None,
             pool_type: Some("concentrated".to_string()),
-            min_tvl: 0, min_volume: 0, normalized_pair: None, page: 1, page_size: 20,
+            min_tvl: 0,
+            min_volume: 0,
+            normalized_pair: None,
+            page: 1,
+            page_size: 20,
         };
-        assert_eq!(query.parse_pool_type(), Some(PoolType::ConcentratedLiquidity));
+        assert_eq!(
+            query.parse_pool_type(),
+            Some(PoolType::ConcentratedLiquidity)
+        );
     }
 }

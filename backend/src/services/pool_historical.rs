@@ -1,11 +1,11 @@
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
-use mongodb::{Client, Collection, Database};
-use mongodb::bson::doc;
 use futures::stream::StreamExt;
+use mongodb::bson::doc;
+use mongodb::{Client, Collection, Database};
 use std::collections::HashMap;
 
-use crate::models::{PoolSnapshot, PoolResult, PoolHistoryResponse, PoolHistoryPoint};
+use crate::models::{PoolHistoryPoint, PoolHistoryResponse, PoolResult, PoolSnapshot};
 
 #[derive(Clone)]
 pub struct PoolHistoricalService {
@@ -25,8 +25,8 @@ impl PoolHistoricalService {
     }
 
     async fn create_indexes(collection: &Collection<PoolSnapshot>) -> Result<()> {
-        use mongodb::IndexModel;
         use mongodb::options::IndexOptions;
+        use mongodb::IndexModel;
 
         // Unique constraint: one snapshot per pool per day
         let unique_opts = IndexOptions::builder().unique(true).build();
@@ -45,7 +45,9 @@ impl PoolHistoricalService {
             .keys(doc! { "normalized_pair": 1, "date": -1 })
             .build();
 
-        collection.create_indexes(vec![index_unique, index_protocol, index_pair]).await?;
+        collection
+            .create_indexes(vec![index_unique, index_protocol, index_pair])
+            .await?;
 
         tracing::info!("MongoDB indexes created for pool_snapshots collection");
         Ok(())
@@ -53,10 +55,7 @@ impl PoolHistoricalService {
 
     /// Check if snapshots have already been collected today
     pub async fn has_pool_snapshots_for_today(&self) -> Result<bool> {
-        let today = Utc::now()
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .unwrap();
+        let today = Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap();
         let today_dt: DateTime<Utc> = DateTime::from_naive_utc_and_offset(today, Utc);
 
         let count = self.collection
@@ -70,15 +69,16 @@ impl PoolHistoricalService {
     /// 1. Fetches latest snapshot for ALL pools in 1 aggregation (instead of N find_one)
     /// 2. Compares in-memory for event-change
     /// 3. Writes changed snapshots with bounded concurrency
-    pub async fn save_pool_snapshots(&self, pools: &[PoolResult], date: DateTime<Utc>) -> Result<usize> {
+    pub async fn save_pool_snapshots(
+        &self,
+        pools: &[PoolResult],
+        date: DateTime<Utc>,
+    ) -> Result<usize> {
         if pools.is_empty() {
             return Ok(0);
         }
 
-        let snapshot_date = date
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .unwrap();
+        let snapshot_date = date.date_naive().and_hms_opt(0, 0, 0).unwrap();
         let snapshot_dt: DateTime<Utc> = DateTime::from_naive_utc_and_offset(snapshot_date, Utc);
 
         // Step 1: Batch fetch latest snapshot per pool (1 aggregation instead of N queries)
@@ -95,7 +95,9 @@ impl PoolHistoricalService {
             }},
         ];
 
-        let mut cursor = self.db.collection::<mongodb::bson::Document>("pool_snapshots")
+        let mut cursor = self
+            .db
+            .collection::<mongodb::bson::Document>("pool_snapshots")
             .aggregate(pipeline)
             .await?;
 
@@ -115,7 +117,9 @@ impl PoolHistoricalService {
         let mut skipped = 0;
 
         for pool in pools {
-            if let Some(&(prev_tvl, prev_vol, prev_apr, prev_rewards)) = prev_data.get(&pool.pool_vault_id) {
+            if let Some(&(prev_tvl, prev_vol, prev_apr, prev_rewards)) =
+                prev_data.get(&pool.pool_vault_id)
+            {
                 let tvl_changed = (prev_tvl - pool.tvl_usd).abs() > 1.0;
                 let volume_changed = (prev_vol - pool.volume_24h_usd).abs() > 1.0;
                 let apr_changed = (prev_apr - pool.fee_apr_24h).abs() > 1e-6;
@@ -131,20 +135,23 @@ impl PoolHistoricalService {
 
         // Step 3: Parallel upsert with bounded concurrency
         let collection = self.collection.clone();
-        let upsert_futures: Vec<_> = to_save.into_iter().map(|snapshot| {
-            let coll = collection.clone();
-            let snap_dt = snapshot_dt;
-            async move {
-                let filter = doc! {
-                    "pool_vault_id": &snapshot.pool_vault_id,
-                    "date": mongodb::bson::DateTime::from_millis(snap_dt.timestamp_millis()),
-                };
-                let update = doc! {
-                    "$set": mongodb::bson::to_document(&snapshot).unwrap_or_default()
-                };
-                coll.update_one(filter, update).upsert(true).await
-            }
-        }).collect();
+        let upsert_futures: Vec<_> = to_save
+            .into_iter()
+            .map(|snapshot| {
+                let coll = collection.clone();
+                let snap_dt = snapshot_dt;
+                async move {
+                    let filter = doc! {
+                        "pool_vault_id": &snapshot.pool_vault_id,
+                        "date": mongodb::bson::DateTime::from_millis(snap_dt.timestamp_millis()),
+                    };
+                    let update = doc! {
+                        "$set": mongodb::bson::to_document(&snapshot).unwrap_or_default()
+                    };
+                    coll.update_one(filter, update).upsert(true).await
+                }
+            })
+            .collect();
 
         let total = upsert_futures.len();
         let stream = futures::stream::iter(upsert_futures).buffer_unordered(20);
@@ -158,13 +165,22 @@ impl PoolHistoricalService {
             }
         }
 
-        tracing::info!("Pool snapshots: {} saved, {} skipped (unchanged), {} total", saved, skipped, total + skipped);
+        tracing::info!(
+            "Pool snapshots: {} saved, {} skipped (unchanged), {} total",
+            saved,
+            skipped,
+            total + skipped
+        );
         Ok(saved)
     }
 
     /// Get latest snapshot date for a pool
-    pub async fn get_latest_pool_snapshot_date(&self, pool_vault_id: &str) -> Result<Option<DateTime<Utc>>> {
-        let latest = self.collection
+    pub async fn get_latest_pool_snapshot_date(
+        &self,
+        pool_vault_id: &str,
+    ) -> Result<Option<DateTime<Utc>>> {
+        let latest = self
+            .collection
             .find_one(doc! { "pool_vault_id": pool_vault_id })
             .sort(doc! { "date": -1 })
             .await?;
@@ -187,7 +203,8 @@ impl PoolHistoricalService {
             }
         };
 
-        let mut cursor = self.collection
+        let mut cursor = self
+            .collection
             .find(filter)
             .sort(doc! { "date": 1 })
             .await?;
@@ -226,7 +243,9 @@ impl PoolHistoricalService {
             }},
         ];
 
-        let mut cursor = self.db.collection::<mongodb::bson::Document>("pool_snapshots")
+        let mut cursor = self
+            .db
+            .collection::<mongodb::bson::Document>("pool_snapshots")
             .aggregate(pipeline)
             .await?;
 
@@ -253,10 +272,19 @@ impl PoolHistoricalService {
             .ordered(false)
             .build();
 
-        match self.collection.insert_many(&snapshots).with_options(opts).await {
+        match self
+            .collection
+            .insert_many(&snapshots)
+            .with_options(opts)
+            .await
+        {
             Ok(result) => {
                 let inserted = result.inserted_ids.len();
-                tracing::debug!("Pool backfill: inserted {} of {} snapshots", inserted, count);
+                tracing::debug!(
+                    "Pool backfill: inserted {} of {} snapshots",
+                    inserted,
+                    count
+                );
                 Ok(inserted)
             }
             Err(e) => {
@@ -301,7 +329,8 @@ impl PoolHistoricalService {
         let ninety_days_ago = Utc::now() - Duration::days(90);
         filter.insert("date", doc! { "$gte": mongodb::bson::DateTime::from_millis(ninety_days_ago.timestamp_millis()) });
 
-        let mut cursor = self.collection
+        let mut cursor = self
+            .collection
             .find(filter)
             .sort(doc! { "date": 1 })
             .await?;
@@ -336,23 +365,34 @@ impl PoolHistoricalService {
         let vault_id = first.pool_vault_id.clone();
 
         // Build daily points
-        let points: Vec<PoolHistoryPoint> = snapshots.iter().map(|s| {
-            let turnover = if s.tvl_usd > 0.0 { s.volume_24h_usd / s.tvl_usd } else { 0.0 };
-            PoolHistoryPoint {
-                date: s.date,
-                tvl_usd: s.tvl_usd,
-                volume_24h_usd: s.volume_24h_usd,
-                fee_rate_bps: s.fee_rate_bps,
-                turnover_ratio_24h: turnover,
-                fee_apr_24h: s.fee_apr_24h,
-                fee_apr_7d: s.fee_apr_7d,
-                rewards_apr: s.rewards_apr,
-            }
-        }).collect();
+        let points: Vec<PoolHistoryPoint> = snapshots
+            .iter()
+            .map(|s| {
+                let turnover = if s.tvl_usd > 0.0 {
+                    s.volume_24h_usd / s.tvl_usd
+                } else {
+                    0.0
+                };
+                PoolHistoryPoint {
+                    date: s.date,
+                    tvl_usd: s.tvl_usd,
+                    volume_24h_usd: s.volume_24h_usd,
+                    fee_rate_bps: s.fee_rate_bps,
+                    turnover_ratio_24h: turnover,
+                    fee_apr_24h: s.fee_apr_24h,
+                    fee_apr_7d: s.fee_apr_7d,
+                    rewards_apr: s.rewards_apr,
+                }
+            })
+            .collect();
 
         // Summary stats
         let aprs: Vec<f64> = points.iter().map(|p| p.fee_apr_24h).collect();
-        let avg_fee_apr = if !aprs.is_empty() { aprs.iter().sum::<f64>() / aprs.len() as f64 } else { 0.0 };
+        let avg_fee_apr = if !aprs.is_empty() {
+            aprs.iter().sum::<f64>() / aprs.len() as f64
+        } else {
+            0.0
+        };
         let min_fee_apr = aprs.iter().copied().fold(f64::INFINITY, f64::min);
         let max_fee_apr = aprs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let avg_tvl = if !points.is_empty() {
@@ -371,8 +411,16 @@ impl PoolHistoricalService {
             days: 90,
             points,
             avg_fee_apr,
-            min_fee_apr: if min_fee_apr.is_infinite() { 0.0 } else { min_fee_apr },
-            max_fee_apr: if max_fee_apr.is_infinite() { 0.0 } else { max_fee_apr },
+            min_fee_apr: if min_fee_apr.is_infinite() {
+                0.0
+            } else {
+                min_fee_apr
+            },
+            max_fee_apr: if max_fee_apr.is_infinite() {
+                0.0
+            } else {
+                max_fee_apr
+            },
             avg_tvl,
             data_available: true,
         })
